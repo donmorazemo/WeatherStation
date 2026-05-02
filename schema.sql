@@ -1,3 +1,4 @@
+-- LOCAL SQLite ONLY — do NOT run this in Supabase (use supabase_schema.sql instead).
 PRAGMA journal_mode=WAL;
 
 CREATE TABLE IF NOT EXISTS readings (

@@ -54,7 +54,7 @@ cd WeatherStation
 2. Click **New project**, give it a name (e.g. `weatherstation`), set a database password, choose a region close to you.
 3. Wait for the project to finish provisioning (~1 min).
 4. In the left sidebar, click **SQL Editor**.
-5. Paste the contents of `supabase_schema.sql` and click **Run**. This creates the `readings` table.
+5. Open `supabase_schema.sql` from the repo — **not** `schema.sql` (that one is SQLite-only and will error in Supabase). Paste its contents and click **Run**. This creates the `readings` table.
 6. Go to **Project Settings → API**.
 7. Copy the **Project URL** and the **anon/public key** — you'll need these in the next step.
 
