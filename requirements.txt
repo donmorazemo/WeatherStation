@@ -1,0 +1,2 @@
+adafruit-circuitpython-bmp280
+supabase

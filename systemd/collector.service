@@ -1,0 +1,13 @@
+[Unit]
+Description=Weather Station Collector
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/pi/WeatherStation/collector.py
+WorkingDirectory=/home/pi/WeatherStation
+Restart=always
+RestartSec=10
+User=pi
+
+[Install]
+WantedBy=multi-user.target
