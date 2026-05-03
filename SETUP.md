@@ -200,7 +200,7 @@ Use the **Session pooler** — not the direct connection. Grafana Cloud connects
 ```sql
 SELECT
   ts AS time,
-  temperature_c AS "Temperature (°C)"
+  (temperature_c * 9.0/5.0 + 32) AS "Temperature (°F)"
 FROM readings
 WHERE ts > NOW() - INTERVAL '24 hours'
 ORDER BY ts;
