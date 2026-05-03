@@ -25,10 +25,13 @@ print("Database ready at", db)
 EOF
 
 echo "=== Installing systemd services ==="
-# Inject the actual repo path and venv python into the service files
-sed "s|/home/pi/WeatherStation|$REPO_DIR|g" \
+# Inject the actual repo path and current username into the service files
+CURRENT_USER="$(whoami)"
+sed -e "s|/home/pi/WeatherStation|$REPO_DIR|g" \
+    -e "s|User=pi|User=$CURRENT_USER|g" \
     "$REPO_DIR/systemd/collector.service" | sudo tee /etc/systemd/system/collector.service > /dev/null
-sed "s|/home/pi/WeatherStation|$REPO_DIR|g" \
+sed -e "s|/home/pi/WeatherStation|$REPO_DIR|g" \
+    -e "s|User=pi|User=$CURRENT_USER|g" \
     "$REPO_DIR/systemd/pusher.service" | sudo tee /etc/systemd/system/pusher.service > /dev/null
 
 sudo systemctl daemon-reload
