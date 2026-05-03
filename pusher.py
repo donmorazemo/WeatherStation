@@ -7,7 +7,7 @@ import logging
 import os
 from pathlib import Path
 
-from supabase import create_client, Client
+import requests
 
 DB_PATH = Path(__file__).parent / "weather.db"
 INTERVAL_SECONDS = 300
@@ -21,10 +21,17 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def get_supabase_client() -> Client:
-    url = os.environ["SUPABASE_URL"]
+def get_config() -> tuple[str, dict]:
+    url = os.environ["SUPABASE_URL"].rstrip("/")
     key = os.environ["SUPABASE_KEY"]
-    return create_client(url, key)
+    endpoint = f"{url}/rest/v1/readings"
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    return endpoint, headers
 
 
 def fetch_unpushed(conn: sqlite3.Connection) -> list[dict]:
@@ -46,19 +53,20 @@ def mark_pushed(conn: sqlite3.Connection, ids: list[int]) -> None:
     conn.commit()
 
 
-def push_batch(supabase: Client, rows: list[dict]) -> None:
+def push_batch(endpoint: str, headers: dict, rows: list[dict]) -> None:
     payload = [
         {"ts": r["ts"], "temperature_c": r["temperature_c"], "pressure_hpa": r["pressure_hpa"]}
         for r in rows
     ]
-    supabase.table("readings").insert(payload).execute()
+    resp = requests.post(endpoint, json=payload, headers=headers, timeout=30)
+    resp.raise_for_status()
 
 
-def sync_once(conn: sqlite3.Connection, supabase: Client) -> int:
+def sync_once(conn: sqlite3.Connection, endpoint: str, headers: dict) -> int:
     rows = fetch_unpushed(conn)
     if not rows:
         return 0
-    push_batch(supabase, rows)
+    push_batch(endpoint, headers, rows)
     ids = [r["id"] for r in rows]
     mark_pushed(conn, ids)
     return len(rows)
@@ -66,12 +74,12 @@ def sync_once(conn: sqlite3.Connection, supabase: Client) -> int:
 
 def main() -> None:
     conn = sqlite3.connect(DB_PATH)
-    supabase = get_supabase_client()
-    log.info("Pusher started — syncing %s to Supabase every %ds", DB_PATH, INTERVAL_SECONDS)
+    endpoint, headers = get_config()
+    log.info("Pusher started — syncing %s to %s every %ds", DB_PATH, endpoint, INTERVAL_SECONDS)
 
     while True:
         try:
-            pushed = sync_once(conn, supabase)
+            pushed = sync_once(conn, endpoint, headers)
             if pushed:
                 log.info("Pushed %d row(s) to Supabase", pushed)
         except Exception:

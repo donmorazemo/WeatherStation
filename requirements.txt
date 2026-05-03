@@ -1,2 +1,2 @@
 adafruit-circuitpython-bmp280
-supabase
+requests
