@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 
 def get_config() -> tuple[str, dict]:
-    url = os.environ["SUPABASE_URL"].rstrip("/")
+    url = os.environ["SUPABASE_URL"].rstrip("/").removesuffix("/rest/v1")
     key = os.environ["SUPABASE_KEY"]
     endpoint = f"{url}/rest/v1/readings"
     headers = {
