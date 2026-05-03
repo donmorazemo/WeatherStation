@@ -188,49 +188,108 @@ Use the **Session pooler** — not the direct connection. Grafana Cloud connects
 
 ---
 
-### 9.4 Create a dashboard
+### 9.4 How to add a panel (applies to all dashboards below)
 
 1. Click **☰ → Dashboards → New → New dashboard**.
 2. Click **Add visualization**.
-3. In the data source dropdown at the top, select **Supabase** (the one you just added).
-4. At the bottom of the screen, switch the query editor from **Builder** to **Code** mode (toggle in the top-right of the query panel).
+3. Select **Supabase** as the data source.
+4. Switch the query editor from **Builder** to **Code** mode (toggle in the top-right of the query panel).
+5. Paste the SQL query.
+6. Set **Panel type** to **Time series** (top-right dropdown).
+7. Set the panel title under **Panel options** on the right.
+8. Click **Apply**.
+9. Repeat for each additional panel, using **Add → Visualization**.
+10. Click the **Save** icon, name the dashboard, and click **Save**.
 
-**Temperature panel** — paste this query:
+---
 
+### 9.5 Dashboard 1 — Real-time (last 2 hours)
+
+Set the dashboard **auto-refresh** to `30s` using the clock icon in the top-right toolbar.
+
+**Panel: Temperature**
 ```sql
 SELECT
   ts AS time,
   (temperature_c * 9.0/5.0 + 32) AS "Temperature (°F)"
 FROM readings
-WHERE ts > NOW() - INTERVAL '24 hours'
+WHERE ts > NOW() - INTERVAL '2 hours'
 ORDER BY ts;
 ```
 
-5. Set **Panel type** to **Time series** (top-right dropdown).
-6. Under **Panel options** on the right, set the title to `Temperature`.
-7. Click **Apply** (top-right).
-
-**Add a second panel for pressure:**
-
-8. Back on the dashboard, click **Add → Visualization**.
-9. Select the **Supabase** data source again, switch to **Code** mode, and paste:
-
+**Panel: Pressure**
 ```sql
 SELECT
   ts AS time,
   pressure_hpa AS "Pressure (hPa)"
 FROM readings
-WHERE ts > NOW() - INTERVAL '24 hours'
+WHERE ts > NOW() - INTERVAL '2 hours'
 ORDER BY ts;
 ```
 
-10. Set the title to `Pressure` and click **Apply**.
-
-11. Click the **Save** icon (top-right), give the dashboard a name (e.g. `WeatherStation`), and click **Save**.
+Save this dashboard as **"Real-time"**.
 
 ---
 
-### 9.5 Make the dashboard public (optional)
+### 9.6 Dashboard 2 — Hourly Averages (last 7 days)
+
+**Panel: Avg Temperature per Hour**
+```sql
+SELECT
+  date_trunc('hour', ts) AS time,
+  ROUND(AVG(temperature_c * 9.0/5.0 + 32)::numeric, 1) AS "Avg Temperature (°F)"
+FROM readings
+WHERE ts > NOW() - INTERVAL '7 days'
+GROUP BY date_trunc('hour', ts)
+ORDER BY time;
+```
+
+**Panel: Avg Pressure per Hour**
+```sql
+SELECT
+  date_trunc('hour', ts) AS time,
+  ROUND(AVG(pressure_hpa)::numeric, 1) AS "Avg Pressure (hPa)"
+FROM readings
+WHERE ts > NOW() - INTERVAL '7 days'
+GROUP BY date_trunc('hour', ts)
+ORDER BY time;
+```
+
+Save this dashboard as **"Hourly Averages"**.
+
+---
+
+### 9.7 Dashboard 3 — Daily Highs & Lows (last 30 days)
+
+**Panel: Daily Temperature High & Low**
+```sql
+SELECT
+  date_trunc('day', ts) AS time,
+  ROUND(MAX(temperature_c * 9.0/5.0 + 32)::numeric, 1) AS "High (°F)",
+  ROUND(MIN(temperature_c * 9.0/5.0 + 32)::numeric, 1) AS "Low (°F)"
+FROM readings
+WHERE ts > NOW() - INTERVAL '30 days'
+GROUP BY date_trunc('day', ts)
+ORDER BY time;
+```
+
+**Panel: Daily Pressure High & Low**
+```sql
+SELECT
+  date_trunc('day', ts) AS time,
+  ROUND(MAX(pressure_hpa)::numeric, 1) AS "High (hPa)",
+  ROUND(MIN(pressure_hpa)::numeric, 1) AS "Low (hPa)"
+FROM readings
+WHERE ts > NOW() - INTERVAL '30 days'
+GROUP BY date_trunc('day', ts)
+ORDER BY time;
+```
+
+Save this dashboard as **"Daily Highs & Lows"**.
+
+---
+
+### 9.8 Make a dashboard public (optional)
 
 If you want a shareable link anyone can view without a Grafana login:
 
