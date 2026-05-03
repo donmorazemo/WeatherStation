@@ -144,15 +144,21 @@ If no rows appear, check the pusher logs (`journalctl -u pusher -f`) for errors.
 
 You need these before configuring Grafana.
 
-1. In Supabase, click the **gear icon (Settings)** in the left sidebar → **Database**.
-2. Scroll to **Connection parameters** and note down:
-   - **Host**: looks like `db.xxxxxxxxxxxx.supabase.co`
+1. Open your Supabase project dashboard.
+2. At the very top of the page, click the green **Connect** button.
+3. A modal will open. Click the **Direct connection** tab.
+4. You'll see a connection string in this format:
+   ```
+   postgresql://postgres:[YOUR-PASSWORD]@db.xxxxxxxxxxxx.supabase.co:5432/postgres
+   ```
+5. Break it into parts for Grafana:
+   - **Host**: everything between `@` and `:5432` — e.g. `db.xxxxxxxxxxxx.supabase.co`
    - **Port**: `5432`
-   - **Database name**: `postgres`
+   - **Database**: `postgres`
    - **User**: `postgres`
-   - **Password**: the password you chose when creating the Supabase project in Step 4
+   - **Password**: the password you set when creating the project in Step 4 (the connection string shows `[YOUR-PASSWORD]` as a placeholder — you need to enter your actual password)
 
-> **Tip:** You can also find a ready-made connection string under **Connection string → URI** — it has all the values in one place.
+> **Can't find the Connect button?** Try **Settings (gear icon) → Database** in the left sidebar, then scroll down to **Connection parameters**.
 
 ---
 
