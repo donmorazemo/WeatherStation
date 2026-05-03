@@ -142,23 +142,26 @@ If no rows appear, check the pusher logs (`journalctl -u pusher -f`) for errors.
 
 ### 9.2 Find your Supabase database connection details
 
-You need these before configuring Grafana.
+Use the **Session pooler** — not the direct connection. Grafana Cloud connects over IPv4 and the direct connection (`db.xxx.supabase.co:5432`) can fail with an IPv6 error. The session pooler works reliably with Grafana.
 
 1. Open your Supabase project dashboard.
-2. At the very top of the page, click the green **Connect** button.
-3. A modal will open. Click the **Direct connection** tab.
-4. You'll see a connection string in this format:
+2. Click the green **Connect** button at the top of the page.
+3. In the modal, click the **Session pooler** tab.
+4. You'll see a connection string like:
    ```
-   postgresql://postgres:[YOUR-PASSWORD]@db.xxxxxxxxxxxx.supabase.co:5432/postgres
+   postgresql://postgres.xxxxxxxxxxxx:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:5432/postgres
    ```
 5. Break it into parts for Grafana:
-   - **Host**: everything between `@` and `:5432` — e.g. `db.xxxxxxxxxxxx.supabase.co`
-   - **Port**: `5432`
-   - **Database**: `postgres`
-   - **User**: `postgres`
-   - **Password**: the password you set when creating the project in Step 4 (the connection string shows `[YOUR-PASSWORD]` as a placeholder — you need to enter your actual password)
 
-> **Can't find the Connect button?** Try **Settings (gear icon) → Database** in the left sidebar, then scroll down to **Connection parameters**.
+   | Field | Where to find it | Example |
+   |-------|-----------------|---------|
+   | **Host** | between `@` and `:5432` | `aws-0-us-east-1.pooler.supabase.com` |
+   | **Port** | `5432` | `5432` |
+   | **Database** | after the last `/` | `postgres` |
+   | **User** | between `//` and `:` | `postgres.xxxxxxxxxxxx` *(note: includes your project ref)* |
+   | **Password** | your Supabase project password | *(what you set in Step 4)* |
+
+> **Important:** The username for the pooler is `postgres.yourprojectref` — not just `postgres`. Copy it exactly from the connection string.
 
 ---
 
@@ -172,9 +175,9 @@ You need these before configuring Grafana.
    | Field | Value |
    |-------|-------|
    | **Name** | `Supabase` (or any name you like) |
-   | **Host URL** | `db.xxxxxxxxxxxx.supabase.co:5432` |
+   | **Host URL** | `aws-0-us-east-1.pooler.supabase.com:5432` *(use your actual pooler host from Step 9.2)* |
    | **Database name** | `postgres` |
-   | **Username** | `postgres` |
+   | **Username** | `postgres.xxxxxxxxxxxx` *(full username from the pooler string — includes project ref)* |
    | **Password** | your Supabase database password |
    | **TLS/SSL Mode** | `require` |
    | **PostgreSQL version** | `15` |
