@@ -8,3 +8,7 @@ CREATE TABLE IF NOT EXISTS readings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_readings_ts ON readings(ts DESC);
+
+-- Supabase enables RLS by default. Sensor data has no per-user access
+-- control needs, so disable it to allow the anon key to insert rows.
+ALTER TABLE readings DISABLE ROW LEVEL SECURITY;
