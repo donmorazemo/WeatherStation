@@ -34,7 +34,7 @@ You should see addresses `0x76` or `0x77` (BMP280) and `0x68` (DS3231) in the ou
 ```bash
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y python3-pip python3-venv git
-```
+```l
 
 ---
 
@@ -131,30 +131,103 @@ If no rows appear, check the pusher logs (`journalctl -u pusher -f`) for errors.
 
 ## Step 9: Set Up Grafana Cloud
 
-1. Go to [grafana.com](https://grafana.com) and create a free account.
-2. Create a new **Grafana Cloud** stack.
-3. In your Grafana instance, go to **Connections → Add new connection → PostgreSQL**.
-4. Fill in the connection details from Supabase (**Project Settings → Database**):
-   - **Host**: your Supabase DB host (e.g. `db.xxxx.supabase.co:5432`)
-   - **Database**: `postgres`
+### 9.1 Create a Grafana Cloud account
+
+1. Go to [grafana.com](https://grafana.com) and click **Create free account**.
+2. Sign up with your email or a Google/GitHub account.
+3. After signing in, Grafana will prompt you to **Create a stack**. Give it a name (e.g. `weatherstation`) and choose the region closest to you.
+4. Click **Finish setup**. Your Grafana instance URL will be something like `https://yourname.grafana.net`.
+
+---
+
+### 9.2 Find your Supabase database connection details
+
+You need these before configuring Grafana.
+
+1. In Supabase, click the **gear icon (Settings)** in the left sidebar → **Database**.
+2. Scroll to **Connection parameters** and note down:
+   - **Host**: looks like `db.xxxxxxxxxxxx.supabase.co`
+   - **Port**: `5432`
+   - **Database name**: `postgres`
    - **User**: `postgres`
-   - **Password**: the database password you set in Step 4
-   - **TLS/SSL Mode**: `require`
-5. Click **Save & test** — you should see a green "Database Connection OK".
-6. Go to **Dashboards → New Dashboard → Add visualization**.
-7. Select your PostgreSQL source and use a query like:
+   - **Password**: the password you chose when creating the Supabase project in Step 4
+
+> **Tip:** You can also find a ready-made connection string under **Connection string → URI** — it has all the values in one place.
+
+---
+
+### 9.3 Add PostgreSQL as a data source
+
+1. In your Grafana instance, click the **hamburger menu (☰)** in the top-left → **Connections → Data sources**.
+2. Click **Add new data source**.
+3. Search for **PostgreSQL** and click it.
+4. Fill in the fields:
+
+   | Field | Value |
+   |-------|-------|
+   | **Name** | `Supabase` (or any name you like) |
+   | **Host URL** | `db.xxxxxxxxxxxx.supabase.co:5432` |
+   | **Database name** | `postgres` |
+   | **Username** | `postgres` |
+   | **Password** | your Supabase database password |
+   | **TLS/SSL Mode** | `require` |
+   | **PostgreSQL version** | `15` |
+
+5. Leave everything else as default.
+6. Scroll to the bottom and click **Save & test**.
+7. You should see a green banner: **"Database Connection OK"**. If you see an error, double-check the host (no `https://`, no trailing slash) and password.
+
+---
+
+### 9.4 Create a dashboard
+
+1. Click **☰ → Dashboards → New → New dashboard**.
+2. Click **Add visualization**.
+3. In the data source dropdown at the top, select **Supabase** (the one you just added).
+4. At the bottom of the screen, switch the query editor from **Builder** to **Code** mode (toggle in the top-right of the query panel).
+
+**Temperature panel** — paste this query:
 
 ```sql
 SELECT
   ts AS time,
-  temperature_c AS "Temperature (°C)",
+  temperature_c AS "Temperature (°C)"
+FROM readings
+WHERE ts > NOW() - INTERVAL '24 hours'
+ORDER BY ts;
+```
+
+5. Set **Panel type** to **Time series** (top-right dropdown).
+6. Under **Panel options** on the right, set the title to `Temperature`.
+7. Click **Apply** (top-right).
+
+**Add a second panel for pressure:**
+
+8. Back on the dashboard, click **Add → Visualization**.
+9. Select the **Supabase** data source again, switch to **Code** mode, and paste:
+
+```sql
+SELECT
+  ts AS time,
   pressure_hpa AS "Pressure (hPa)"
 FROM readings
 WHERE ts > NOW() - INTERVAL '24 hours'
 ORDER BY ts;
 ```
 
-Set the panel type to **Time series** and save.
+10. Set the title to `Pressure` and click **Apply**.
+
+11. Click the **Save** icon (top-right), give the dashboard a name (e.g. `WeatherStation`), and click **Save**.
+
+---
+
+### 9.5 Make the dashboard public (optional)
+
+If you want a shareable link anyone can view without a Grafana login:
+
+1. Open the dashboard, click the **Share** icon (top-right) → **Public dashboard**.
+2. Toggle **Enable public access** → **Save**.
+3. Copy the public URL — this is the link you can share or bookmark.
 
 ---
 
