@@ -3,12 +3,12 @@ Description=Weather Station Pusher
 After=network.target
 
 [Service]
-ExecStart=/home/pi/WeatherStation/venv/bin/python /home/pi/WeatherStation/pusher.py
-WorkingDirectory=/home/pi/WeatherStation
-EnvironmentFile=/home/pi/WeatherStation/.env
+ExecStart=/home/ashishnarain/WeatherStation/venv/bin/python /home/ashishnarain/WeatherStation/pusher.py
+WorkingDirectory=/home/ashishnarain/WeatherStation
+EnvironmentFile=/home/ashishnarain/WeatherStation/.env
 Restart=always
 RestartSec=30
-User=pi
+User=ashishnarain
 
 [Install]
 WantedBy=multi-user.target

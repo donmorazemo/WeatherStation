@@ -388,7 +388,7 @@ crontab -e
 Add this line:
 
 ```
-0 2 * * * rclone copy /home/pi/WeatherStation/weather.db gdrive:weather-backups/
+0 2 * * * rclone copy /home/ashishnarain/WeatherStation/weather.db gdrive:weather-backups/
 ```
 
 ---
