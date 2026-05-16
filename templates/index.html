@@ -220,7 +220,7 @@
         }
 
         const pt = { timeZone: "America/Los_Angeles", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true };
-        const readingTime = new Date(d.ts + "Z").toLocaleTimeString("en-US", pt);
+        const readingTime = new Date(d.ts.replace("+00:00", "Z")).toLocaleTimeString("en-US", pt);
         const refreshTime = new Date().toLocaleTimeString("en-US", pt);
         document.getElementById("reading-time").textContent = readingTime + " PT";
         document.getElementById("refresh-time").textContent = refreshTime + " PT";
