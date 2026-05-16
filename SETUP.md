@@ -67,14 +67,68 @@ cp .env.example .env
 nano .env
 ```
 
-Fill in your values:
+Fill in your Supabase values:
 
 ```
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_KEY=your-anon-public-key
 ```
 
+If you are using a Feit smart plug (see Step 5a), also add:
+
+```
+PLUG_DEVICE_ID=your_device_id_here
+PLUG_LOCAL_IP=192.168.x.x
+PLUG_LOCAL_KEY=your_local_key_here
+TEMP_THRESHOLD_C=25.5
+```
+
 Save and exit (`Ctrl+X`, then `Y`, then `Enter`).
+
+---
+
+## Step 5a: Set Up Feit Smart Plug Control (Optional)
+
+The collector can automatically turn a Feit smart plug ON when temperature exceeds a threshold and OFF when it drops back below. The plug is controlled locally over WiFi — no cloud dependency at runtime.
+
+### Get your plug's credentials
+
+You need three values from your plug: **Device ID**, **Local IP**, and **Local Key**. The easiest way to get them is with the tinytuya wizard.
+
+**1. Create a Tuya IoT Platform account**
+
+1. Go to [iot.tuya.com](https://iot.tuya.com) and create a free account.
+2. Click **Cloud → Development → Create Cloud Project**.
+3. Give it a name, set Industry to **Smart Home**, choose the data center closest to you, and click **Create**.
+4. On the project page, note your **Access ID** and **Access Secret** — the wizard will ask for these.
+
+**2. Link your Feit app account**
+
+1. In your Tuya project, click **Devices → Link Tuya App Account**.
+2. A QR code appears on screen.
+3. Open the **Feit Electric app** on your phone, tap **Me** (bottom-right), then tap the scan icon in the top-right corner.
+4. Scan the QR code. Your devices will appear in the Tuya project within a few seconds.
+
+**3. Run the tinytuya wizard on the Pi**
+
+```bash
+~/WeatherStation/venv/bin/python -m tinytuya wizard
+```
+
+Enter your **Access ID**, **Access Secret**, and the **region** when prompted. The wizard scans your local network and saves a `devices.json` file containing the Device ID, IP address, and Local Key for each device.
+
+**4. Copy your plug's credentials into `.env`**
+
+Open `devices.json`, find your Feit plug, and copy the three values into `.env`:
+
+```
+PLUG_DEVICE_ID=xxxxxxxxxxxxxxxxxx
+PLUG_LOCAL_IP=192.168.1.x
+PLUG_LOCAL_KEY=xxxxxxxxxxxxxxxx
+TEMP_THRESHOLD_C=25.5
+```
+
+Adjust `TEMP_THRESHOLD_C` to your preferred threshold in °C (25.5°C = 78°F).
 
 ---
 
@@ -348,6 +402,9 @@ Add this line:
 | No rows in Supabase after 10 min | Check `.env` values; run `python3 pusher.py` manually |
 | `pusher` shows auth errors | Regenerate your Supabase anon key and update `.env` |
 | Grafana shows "no data" | Confirm the DB host/password in the data source settings |
+| Plug control disabled in logs | Check that `PLUG_DEVICE_ID`, `PLUG_LOCAL_IP`, and `PLUG_LOCAL_KEY` are all set in `.env` |
+| Plug doesn't switch / connection refused | Confirm the plug's IP hasn't changed (assign a static IP in your router); check the Local Key matches `devices.json` |
+| `tinytuya wizard` finds no devices | Make sure the Pi and the plug are on the same WiFi network |
 
 ---
 
@@ -360,3 +417,4 @@ Once setup is complete, everything runs without any manual intervention:
 - **On reboot**: both services start automatically via systemd
 - **On network drop**: pusher replays any missed rows when connectivity returns
 - **Every night at 2 AM**: `weather.db` backed up to Google Drive
+- **On each reading (if plug configured)**: Feit plug turns ON above threshold, OFF below
