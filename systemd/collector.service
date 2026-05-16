@@ -5,6 +5,7 @@ After=network.target
 [Service]
 ExecStart=/home/pi/WeatherStation/venv/bin/python /home/pi/WeatherStation/collector.py
 WorkingDirectory=/home/pi/WeatherStation
+EnvironmentFile=/home/pi/WeatherStation/.env
 Restart=always
 RestartSec=10
 User=pi

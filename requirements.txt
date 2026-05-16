@@ -1,2 +1,4 @@
 adafruit-circuitpython-bmp280
 requests
+tinytuya
+python-dotenv
