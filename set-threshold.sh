@@ -22,4 +22,6 @@ else
     echo "TEMP_THRESHOLD_C=$value" >> "$env_file"
 fi
 
-echo "Threshold updated to ${value}°C — takes effect on next reading (within 60 seconds)"
+echo "Threshold updated to ${value}°C"
+sudo systemctl restart collector
+echo "Collector restarted — new threshold active immediately"
