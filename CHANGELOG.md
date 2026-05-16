@@ -6,6 +6,14 @@ All notable changes to this project are documented here.
 
 ## [2026-05-16]
 
+### Fixed — Web Dashboard Timestamps
+- "Reading taken" timestamp was showing "Invalid Date" — fixed by correctly parsing the `+00:00` UTC offset from SQLite
+- Both timestamps now include the date (e.g. "May 16, 10:01:43 AM PT") in addition to the time
+- Added two Pacific Time timestamps to the dashboard: "Reading taken" (when sensor last measured) and "Page refreshed" (updates every 5s — confirms live data even when temperature is unchanged between 60s reads)
+
+---
+
+
 ### Added — Web Dashboard
 - New `webapp.py` Flask app running on port 5000, accessible from any device on the home network
 - Displays current temperature (°F), pressure, and fan on/off status
