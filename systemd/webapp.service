@@ -1,0 +1,14 @@
+[Unit]
+Description=Weather Station Web App
+After=network.target
+
+[Service]
+ExecStart=/home/ashishnarain/WeatherStation/venv/bin/python /home/ashishnarain/WeatherStation/webapp.py
+WorkingDirectory=/home/ashishnarain/WeatherStation
+EnvironmentFile=/home/ashishnarain/WeatherStation/.env
+Restart=always
+RestartSec=10
+User=ashishnarain
+
+[Install]
+WantedBy=multi-user.target

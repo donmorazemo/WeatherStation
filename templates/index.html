@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Station</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 500;
+      color: #94a3b8;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 2.5rem;
+    }
+
+    .cards {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 2.5rem;
+    }
+
+    .card {
+      background: #1e293b;
+      border-radius: 1rem;
+      padding: 2rem 2.5rem;
+      text-align: center;
+      min-width: 180px;
+    }
+
+    .card-label {
+      font-size: 0.75rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-value {
+      font-size: 3rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .card-sub {
+      font-size: 0.9rem;
+      color: #64748b;
+      margin-top: 0.4rem;
+    }
+
+    .temp-value { color: #f97316; }
+    .pressure-value { color: #38bdf8; }
+
+    .fan-badge {
+      display: inline-block;
+      padding: 0.3rem 1.2rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      margin-top: 0.75rem;
+    }
+    .fan-on  { background: #166534; color: #4ade80; }
+    .fan-off { background: #1e293b; color: #64748b; border: 1px solid #334155; }
+
+    .threshold-section {
+      background: #1e293b;
+      border-radius: 1rem;
+      padding: 1.5rem 2rem;
+      width: 100%;
+      max-width: 360px;
+      margin-bottom: 2rem;
+    }
+
+    .threshold-section h2 {
+      font-size: 0.75rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 1rem;
+    }
+
+    .threshold-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .threshold-row input {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      color: #e2e8f0;
+      font-size: 1.1rem;
+      padding: 0.6rem 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .threshold-row input:focus { border-color: #f97316; }
+
+    .threshold-row button {
+      background: #f97316;
+      border: none;
+      border-radius: 0.5rem;
+      color: #fff;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.6rem 1.2rem;
+      transition: background 0.2s;
+    }
+
+    .threshold-row button:hover { background: #ea6c0a; }
+    .threshold-row button:disabled { background: #334155; cursor: default; }
+
+    .save-status {
+      font-size: 0.8rem;
+      margin-top: 0.5rem;
+      min-height: 1.2em;
+      color: #4ade80;
+    }
+
+    .updated {
+      font-size: 0.75rem;
+      color: #475569;
+    }
+
+    #error-msg {
+      color: #f87171;
+      font-size: 0.85rem;
+      margin-top: 1rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Weather Station</h1>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Temperature</div>
+      <div class="card-value temp-value" id="temp-f">--</div>
+      <div class="card-sub" id="temp-c">-- °C</div>
+      <div id="fan-badge" class="fan-badge fan-off">FAN OFF</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Pressure</div>
+      <div class="card-value pressure-value" id="pressure">--</div>
+      <div class="card-sub">hPa</div>
+    </div>
+  </div>
+
+  <div class="threshold-section">
+    <h2>Fan turns on above</h2>
+    <div class="threshold-row">
+      <input type="number" id="threshold-input" step="0.5" placeholder="°C">
+      <button id="save-btn" onclick="saveThreshold()">Save</button>
+    </div>
+    <div class="save-status" id="save-status"></div>
+  </div>
+
+  <div class="updated">Last updated: <span id="last-updated">--</span></div>
+  <div id="error-msg">Could not reach the station</div>
+
+  <script>
+    async function refresh() {
+      try {
+        const res = await fetch("/api/current");
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+
+        const f = (d.temperature_c * 9 / 5 + 32).toFixed(1);
+        document.getElementById("temp-f").textContent = f + "°F";
+        document.getElementById("temp-c").textContent = d.temperature_c.toFixed(1) + " °C";
+        document.getElementById("pressure").textContent = d.pressure_hpa.toFixed(1);
+
+        const badge = document.getElementById("fan-badge");
+        if (d.fan_on) {
+          badge.textContent = "FAN ON";
+          badge.className = "fan-badge fan-on";
+        } else {
+          badge.textContent = "FAN OFF";
+          badge.className = "fan-badge fan-off";
+        }
+
+        const input = document.getElementById("threshold-input");
+        if (document.activeElement !== input) {
+          input.value = d.threshold_c;
+        }
+
+        const ts = new Date(d.ts + "Z");
+        document.getElementById("last-updated").textContent = ts.toLocaleTimeString();
+        document.getElementById("error-msg").style.display = "none";
+      } catch {
+        document.getElementById("error-msg").style.display = "block";
+      }
+    }
+
+    async function saveThreshold() {
+      const input = document.getElementById("threshold-input");
+      const btn = document.getElementById("save-btn");
+      const status = document.getElementById("save-status");
+      const value = parseFloat(input.value);
+      if (isNaN(value)) return;
+
+      btn.disabled = true;
+      status.textContent = "Saving…";
+      try {
+        const res = await fetch("/api/threshold", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ threshold_c: value })
+        });
+        if (!res.ok) throw new Error();
+        status.textContent = "Saved — takes effect within 60 seconds";
+        setTimeout(() => status.textContent = "", 4000);
+      } catch {
+        status.style.color = "#f87171";
+        status.textContent = "Failed to save";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 30000);
+  </script>
+</body>
+</html>
