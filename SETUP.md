@@ -393,6 +393,52 @@ Add this line:
 
 ---
 
+## Step 11: Set Up the Web Dashboard
+
+The web dashboard runs on the Pi and is accessible from any device on your home network. It shows the current temperature and pressure, fan on/off status, and lets you update the fan threshold — all in real time.
+
+### 11.1 Enable and start the webapp service
+
+```bash
+sudo cp ~/WeatherStation/systemd/webapp.service /etc/systemd/system/webapp.service
+sudo systemctl daemon-reload
+sudo systemctl enable webapp
+sudo systemctl start webapp
+```
+
+### 11.2 Open the dashboard
+
+From any device on your home WiFi, open:
+
+```
+http://<pi-ip-address>:5000
+```
+
+To find the Pi's IP address:
+
+```bash
+hostname -I
+```
+
+The dashboard:
+- Shows temperature (°F) and pressure — **auto-refreshes every 5 seconds**
+- Shows whether the fan/plug is ON or OFF
+- Lets you update the fan threshold in °F — **takes effect within 5 seconds**
+
+### 11.3 Update the fan threshold from the command line
+
+You can also update the threshold directly on the Pi:
+
+```bash
+# Check current threshold
+~/WeatherStation/set-threshold.sh
+
+# Set a new threshold (in °C)
+~/WeatherStation/set-threshold.sh 25.5
+```
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -405,6 +451,8 @@ Add this line:
 | Plug control disabled in logs | Check that `PLUG_DEVICE_ID`, `PLUG_LOCAL_IP`, and `PLUG_LOCAL_KEY` are all set in `.env` |
 | Plug doesn't switch / connection refused | Confirm the plug's IP hasn't changed (assign a static IP in your router); check the Local Key matches `devices.json` |
 | `tinytuya wizard` finds no devices | Make sure the Pi and the plug are on the same WiFi network |
+| Web dashboard not loading | Run `sudo systemctl status webapp` — check it's active and listening on port 5000 |
+| Dashboard shows "Could not reach the station" | Confirm the webapp service is running; check firewall isn't blocking port 5000 |
 
 ---
 
@@ -418,3 +466,4 @@ Once setup is complete, everything runs without any manual intervention:
 - **On network drop**: pusher replays any missed rows when connectivity returns
 - **Every night at 2 AM**: `weather.db` backed up to Google Drive
 - **On each reading (if plug configured)**: Feit plug turns ON above threshold, OFF below
+- **Always on**: web dashboard available at `http://<pi-ip>:5000` — refreshes every 5 seconds
