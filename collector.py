@@ -32,10 +32,13 @@ def load_plug_config():
     ip = os.getenv("PLUG_LOCAL_IP")
     local_key = os.getenv("PLUG_LOCAL_KEY")
     if not all([device_id, ip, local_key]):
-        return None, None
-    device = tinytuya.OutletDevice(dev_id=device_id, address=ip, local_key=local_key, version=3.3)
-    threshold = float(os.getenv("TEMP_THRESHOLD_C", "25.5"))
-    return device, threshold
+        return None
+    return tinytuya.OutletDevice(dev_id=device_id, address=ip, local_key=local_key, version=3.3)
+
+
+def get_threshold() -> float:
+    load_dotenv(Path(__file__).parent / ".env", override=True)
+    return float(os.getenv("TEMP_THRESHOLD_C", "25.5"))
 
 
 def control_plug(device, turn_on: bool) -> None:
@@ -76,9 +79,9 @@ def main() -> None:
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
 
-    plug_device, threshold = load_plug_config()
+    plug_device = load_plug_config()
     if plug_device:
-        log.info("Plug control enabled — threshold %.1f°C", threshold)
+        log.info("Plug control enabled — threshold %.1f°C", get_threshold())
     else:
         log.info("Plug control disabled — set PLUG_DEVICE_ID, PLUG_LOCAL_IP, PLUG_LOCAL_KEY in .env to enable")
 
@@ -91,6 +94,7 @@ def main() -> None:
             insert_reading(conn, ts, temperature_c, pressure_hpa)
             log.info("Recorded %s  %.2f°C  %.2f hPa", ts, temperature_c, pressure_hpa)
             if plug_device:
+                threshold = get_threshold()
                 should_be_on = temperature_c > threshold
                 control_plug(plug_device, should_be_on)
                 log.info("Plug %s (%.2f°C %s %.1f°C threshold)", "ON" if should_be_on else "OFF", temperature_c, ">" if should_be_on else "<=", threshold)
