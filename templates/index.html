@@ -138,10 +138,20 @@
       color: #4ade80;
     }
 
+    .timestamps {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.3rem;
+      margin-bottom: 0.5rem;
+    }
+
     .updated {
       font-size: 0.75rem;
       color: #475569;
     }
+
+    .updated span { color: #64748b; }
 
     #error-msg {
       color: #f87171;
@@ -177,7 +187,10 @@
     <div class="save-status" id="save-status"></div>
   </div>
 
-  <div class="updated">Last updated: <span id="last-updated">--</span></div>
+  <div class="timestamps">
+    <div class="updated">Reading taken: <span id="reading-time">--</span></div>
+    <div class="updated">Page refreshed: <span id="refresh-time">--</span></div>
+  </div>
   <div id="error-msg">Could not reach the station</div>
 
   <script>
@@ -206,8 +219,11 @@
           input.value = (d.threshold_c * 9 / 5 + 32).toFixed(1);
         }
 
-        const ts = new Date(d.ts + "Z");
-        document.getElementById("last-updated").textContent = ts.toLocaleTimeString();
+        const pt = { timeZone: "America/Los_Angeles", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true };
+        const readingTime = new Date(d.ts + "Z").toLocaleTimeString("en-US", pt);
+        const refreshTime = new Date().toLocaleTimeString("en-US", pt);
+        document.getElementById("reading-time").textContent = readingTime + " PT";
+        document.getElementById("refresh-time").textContent = refreshTime + " PT";
         document.getElementById("error-msg").style.display = "none";
       } catch {
         document.getElementById("error-msg").style.display = "block";
