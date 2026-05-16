@@ -219,7 +219,7 @@
           input.value = (d.threshold_c * 9 / 5 + 32).toFixed(1);
         }
 
-        const pt = { timeZone: "America/Los_Angeles", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true };
+        const pt = { timeZone: "America/Los_Angeles", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true };
         const readingTime = new Date(d.ts.replace("+00:00", "Z")).toLocaleTimeString("en-US", pt);
         const refreshTime = new Date().toLocaleTimeString("en-US", pt);
         document.getElementById("reading-time").textContent = readingTime + " PT";
