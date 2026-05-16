@@ -171,7 +171,7 @@
   <div class="threshold-section">
     <h2>Fan turns on above</h2>
     <div class="threshold-row">
-      <input type="number" id="threshold-input" step="0.5" placeholder="°C">
+      <input type="number" id="threshold-input" step="0.5" placeholder="°F">
       <button id="save-btn" onclick="saveThreshold()">Save</button>
     </div>
     <div class="save-status" id="save-status"></div>
@@ -203,7 +203,7 @@
 
         const input = document.getElementById("threshold-input");
         if (document.activeElement !== input) {
-          input.value = d.threshold_c;
+          input.value = (d.threshold_c * 9 / 5 + 32).toFixed(1);
         }
 
         const ts = new Date(d.ts + "Z");
@@ -224,13 +224,14 @@
       btn.disabled = true;
       status.textContent = "Saving…";
       try {
+        const threshold_c = (value - 32) * 5 / 9;
         const res = await fetch("/api/threshold", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ threshold_c: value })
+          body: JSON.stringify({ threshold_c })
         });
         if (!res.ok) throw new Error();
-        status.textContent = "Saved — takes effect within 60 seconds";
+        status.textContent = "Saved — takes effect within 5 seconds";
         setTimeout(() => status.textContent = "", 4000);
       } catch {
         status.style.color = "#f87171";
@@ -241,7 +242,7 @@
     }
 
     refresh();
-    setInterval(refresh, 30000);
+    setInterval(refresh, 5000);
   </script>
 </body>
 </html>

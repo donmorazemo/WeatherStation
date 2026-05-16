@@ -87,20 +87,35 @@ def main() -> None:
 
     log.info("Collector started — writing to %s", DB_PATH)
 
+    last_temp: float | None = None
+    last_plug_state: bool | None = None
+    CHECK_INTERVAL = 5
+    ticks_per_read = INTERVAL_SECONDS // CHECK_INTERVAL
+
+    tick = 0
     while True:
-        try:
-            ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            temperature_c, pressure_hpa = read_sensor(bmp)
-            insert_reading(conn, ts, temperature_c, pressure_hpa)
-            log.info("Recorded %s  %.2f°C  %.2f hPa", ts, temperature_c, pressure_hpa)
-            if plug_device:
+        if tick % ticks_per_read == 0:
+            try:
+                ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                last_temp, pressure_hpa = read_sensor(bmp)
+                insert_reading(conn, ts, last_temp, pressure_hpa)
+                log.info("Recorded %s  %.2f°C  %.2f hPa", ts, last_temp, pressure_hpa)
+            except Exception:
+                log.exception("Failed to read/store sensor data")
+
+        if plug_device and last_temp is not None:
+            try:
                 threshold = get_threshold()
-                should_be_on = temperature_c > threshold
-                control_plug(plug_device, should_be_on)
-                log.info("Plug %s (%.2f°C %s %.1f°C threshold)", "ON" if should_be_on else "OFF", temperature_c, ">" if should_be_on else "<=", threshold)
-        except Exception:
-            log.exception("Failed to read/store sensor data")
-        time.sleep(INTERVAL_SECONDS)
+                should_be_on = last_temp > threshold
+                if should_be_on != last_plug_state:
+                    control_plug(plug_device, should_be_on)
+                    last_plug_state = should_be_on
+                    log.info("Plug %s (%.2f°C %s %.1f°C threshold)", "ON" if should_be_on else "OFF", last_temp, ">" if should_be_on else "<=", threshold)
+            except Exception:
+                log.exception("Failed to check/control plug")
+
+        tick += 1
+        time.sleep(CHECK_INTERVAL)
 
 
 if __name__ == "__main__":
