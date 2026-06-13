@@ -1,3 +1,6 @@
 venv/
 weather.db
+weather.db-shm
+weather.db-wal
 .env
+.claude/

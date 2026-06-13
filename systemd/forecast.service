@@ -1,0 +1,14 @@
+[Unit]
+Description=Weather Station Pressure Forecast
+After=network.target
+
+[Service]
+ExecStart=/home/ashishnarain/WeatherStation/venv/bin/python /home/ashishnarain/WeatherStation/forecast_app.py
+WorkingDirectory=/home/ashishnarain/WeatherStation
+EnvironmentFile=/home/ashishnarain/WeatherStation/.env
+Restart=always
+RestartSec=10
+User=ashishnarain
+
+[Install]
+WantedBy=multi-user.target

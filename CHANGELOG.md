@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2026-06-12]
+
+### Added — Pressure Forecast Service
+- New `forecast_app.py` Flask service on port 5001, independent of the existing webapp
+- Reads the existing `weather.db` **read-only** (WAL mode) — does not modify collector, pusher, schema, or any running service
+- New `forecast.py` — pure functions for 10-minute bucketing, 3-hour pressure trend, and plain-English forecast lookup
+- New `templates/forecast.html` — Chart.js line graph of the last 72 hours of pressure plus a forecast card and trend metrics
+- New `systemd/forecast.service` — auto-starts on boot, restart on crash
+- Forecast parameters chosen from standard meteorological practice:
+  - **History window (N):** 72 hours (3 days) shown on the graph
+  - **Sample/aggregation interval (X):** 10 minutes (downsampled from existing 1-min readings)
+  - **Forecast horizon (Y):** 12 hours
+  - **Trend window:** 3 hours (Zambretti-style), altitude-independent
+
+---
+
 ## [2026-05-16]
 
 ### Fixed — Web Dashboard Timestamps

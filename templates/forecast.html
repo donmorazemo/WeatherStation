@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pressure Forecast</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem 1.5rem;
+    }
+    .wrap { max-width: 1000px; margin: 0 auto; }
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 500;
+      color: #94a3b8;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 0.4rem;
+    }
+    .subtitle { font-size: 0.85rem; color: #64748b; margin-bottom: 2rem; }
+    .forecast-card {
+      background: #1e293b;
+      border-radius: 1rem;
+      padding: 1.75rem 2rem;
+      margin-bottom: 1.5rem;
+      border-left: 4px solid #38bdf8;
+    }
+    .forecast-label {
+      font-size: 0.75rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.6rem;
+    }
+    .forecast-headline {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #e2e8f0;
+      margin-bottom: 0.7rem;
+      line-height: 1.2;
+    }
+    .forecast-detail { font-size: 0.95rem; color: #94a3b8; line-height: 1.5; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .metric {
+      background: #1e293b;
+      border-radius: 0.75rem;
+      padding: 1rem 1.2rem;
+      text-align: center;
+    }
+    .metric-label {
+      font-size: 0.7rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.4rem;
+    }
+    .metric-value { font-size: 1.6rem; font-weight: 700; line-height: 1; }
+    .pressure-value { color: #38bdf8; }
+    .trend-up { color: #4ade80; }
+    .trend-down { color: #f87171; }
+    .trend-flat { color: #94a3b8; }
+    .chart-card {
+      background: #1e293b;
+      border-radius: 1rem;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .chart-title {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 1rem;
+    }
+    .chart-wrap { position: relative; height: 360px; }
+    .footnote { font-size: 0.75rem; color: #475569; text-align: center; margin-top: 1rem; }
+    .footnote a { color: #64748b; }
+    #error-msg {
+      color: #f87171;
+      font-size: 0.85rem;
+      text-align: center;
+      margin-top: 1rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Pressure Forecast</h1>
+    <div class="subtitle">
+      Last {{ history_hours }} h of barometric pressure · {{ bucket_minutes }}-min averages ·
+      forecast horizon {{ horizon_hours }} h
+    </div>
+
+    <div class="forecast-card">
+      <div class="forecast-label">Next {{ horizon_hours }} hours</div>
+      <div class="forecast-headline" id="headline">—</div>
+      <div class="forecast-detail" id="detail">Loading…</div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric">
+        <div class="metric-label">Now</div>
+        <div class="metric-value pressure-value" id="current">—</div>
+        <div class="metric-label" style="margin-top:0.4rem;">hPa</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Δ last hour</div>
+        <div class="metric-value" id="d1">—</div>
+        <div class="metric-label" style="margin-top:0.4rem;">hPa</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Δ last 3 hours</div>
+        <div class="metric-value" id="d3">—</div>
+        <div class="metric-label" style="margin-top:0.4rem;">hPa</div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Pressure — last {{ history_hours }} hours</div>
+      <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    </div>
+
+    <div id="error-msg">Could not reach the forecast service</div>
+
+    <div class="footnote">
+      Forecast method: 3-hour pressure trend (Zambretti-style, altitude-independent).
+      Pressure-only forecasts are reliable to roughly {{ horizon_hours }}–24 hours.
+    </div>
+  </div>
+
+  <script>
+    const HISTORY_HOURS = {{ history_hours }};
+    let chart = null;
+
+    function fmtDelta(v) {
+      if (v === null || v === undefined) return "—";
+      const sign = v > 0 ? "+" : "";
+      return sign + v.toFixed(2);
+    }
+    function trendClass(v) {
+      if (v === null || v === undefined) return "trend-flat";
+      if (v > 0.3) return "trend-up";
+      if (v < -0.3) return "trend-down";
+      return "trend-flat";
+    }
+
+    async function loadForecast() {
+      const res = await fetch("/api/forecast");
+      if (!res.ok) throw new Error("forecast");
+      const f = await res.json();
+      document.getElementById("headline").textContent = f.headline;
+      document.getElementById("detail").textContent = f.detail;
+      document.getElementById("current").textContent =
+        f.current_hpa !== null ? f.current_hpa.toFixed(2) : "—";
+      const d1 = document.getElementById("d1");
+      const d3 = document.getElementById("d3");
+      d1.textContent = fmtDelta(f.trend_1h_hpa);
+      d1.className = "metric-value " + trendClass(f.trend_1h_hpa);
+      d3.textContent = fmtDelta(f.trend_3h_hpa);
+      d3.className = "metric-value " + trendClass(f.trend_3h_hpa);
+    }
+
+    async function loadSeries() {
+      const res = await fetch(`/api/series?hours=${HISTORY_HOURS}`);
+      if (!res.ok) throw new Error("series");
+      const s = await res.json();
+      const points = s.points.map(p => ({ x: new Date(p.ts.replace("+00:00", "Z")), y: p.pressure_hpa }));
+      if (chart) {
+        chart.data.datasets[0].data = points;
+        chart.update("none");
+        return;
+      }
+      const ctx = document.getElementById("chart").getContext("2d");
+      chart = new Chart(ctx, {
+        type: "line",
+        data: { datasets: [{
+          label: "Pressure (hPa)",
+          data: points,
+          borderColor: "#38bdf8",
+          backgroundColor: "rgba(56,189,248,0.12)",
+          borderWidth: 2,
+          fill: true,
+          pointRadius: 0,
+          tension: 0.25,
+        }]},
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          parsing: false,
+          interaction: { mode: "nearest", intersect: false },
+          scales: {
+            x: {
+              type: "time",
+              time: { unit: "hour", displayFormats: { hour: "MMM d HH:mm" } },
+              ticks: { color: "#64748b", maxRotation: 0, autoSkipPadding: 24 },
+              grid: { color: "rgba(100,116,139,0.12)" },
+            },
+            y: {
+              ticks: { color: "#64748b" },
+              grid: { color: "rgba(100,116,139,0.12)" },
+              title: { display: true, text: "hPa", color: "#64748b" },
+            },
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: "#0f172a",
+              borderColor: "#334155",
+              borderWidth: 1,
+              callbacks: {
+                title: items => new Date(items[0].parsed.x).toLocaleString("en-US", {
+                  timeZone: "America/Los_Angeles",
+                  month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                }) + " PT",
+                label: item => `${item.parsed.y.toFixed(2)} hPa`,
+              },
+            },
+          },
+        },
+      });
+    }
+
+    async function refresh() {
+      try {
+        await Promise.all([loadForecast(), loadSeries()]);
+        document.getElementById("error-msg").style.display = "none";
+      } catch {
+        document.getElementById("error-msg").style.display = "block";
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 60_000);
+  </script>
+</body>
+</html>

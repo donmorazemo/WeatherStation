@@ -51,8 +51,50 @@ This installs dependencies, enables I2C, initialises the local SQLite database, 
 |---------|-------------|----------|
 | `collector.py` | Reads BMP280 → SQLite | Every 60 s |
 | `pusher.py` | SQLite → Supabase (unpushed rows) | Every 5 min |
+| `webapp.py` | Live dashboard on `:5000` (temp + fan threshold) | — |
+| `forecast_app.py` | Pressure forecast dashboard on `:5001` | Refresh every 60 s |
 
-Both services restart automatically on failure. Unpushed rows replay on reconnect.
+All services restart automatically on failure. Unpushed rows replay on reconnect.
+
+## Pressure Forecast (`forecast_app.py`)
+
+A separate Flask service on **port 5001** that reads `weather.db` **read-only** and
+shows the last 72 hours of barometric pressure plus a plain-English forecast for
+the next 12 hours. It does not touch the collector, the pusher, or the schema.
+
+**How it forecasts (plain English).** Barometric pressure is the single best
+indicator a home weather station has. The 3-hour pressure *trend* is what
+matters — not the absolute value:
+
+| Δ over 3 h | What it usually means |
+|---|---|
+| > +6 hPa | Clearing rapidly, possibly cooler/windier |
+| +1.5 to +6 hPa | Fair weather improving |
+| ±1.5 hPa | Steady — no significant change |
+| −1.5 to −6 hPa | Clouds and rain likely within 12–24 h |
+| < −6 hPa | Storm likely within hours |
+
+This is the same "Zambretti-style" approach used by Davis, Acurite, and most
+consumer weather stations. Pressure alone is reliable out to roughly 12–24 h;
+beyond that you need wind, humidity, satellite data, etc.
+
+**Parameters used (from standard meteorological practice):**
+
+- **History window (N) — 72 hours / 3 days.** Standard consumer weather-station
+  window: enough context to spot fronts moving in, not so much that the chart
+  gets noisy.
+- **Sample/aggregation interval (X) — 10 minutes.** Raw 1-minute sensor
+  readings are averaged into 10-minute buckets. Smooths out sensor jitter while
+  keeping the 3-hour slope sharp.
+- **Forecast horizon (Y) — 12 hours.** The classic Zambretti window. Pressure
+  trends just don't carry useful signal further out than that.
+- **Trend window — 3 hours.** Standard barograph slope window; long enough to
+  ignore short bumps, short enough to react to incoming fronts.
+
+Endpoints:
+- `GET /` — dashboard
+- `GET /api/series?hours=72` — bucketed pressure JSON
+- `GET /api/forecast` — current verdict, trends, sample count
 
 ## Database
 
