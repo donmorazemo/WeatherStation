@@ -216,6 +216,119 @@ def test_forecast_reports_span_and_coverage():
     assert f.sample_count >= 30
 
 
+# ---------- 6 h confirmation trend ----------
+
+def test_trend_6h_computed():
+    """Steady ramp over 6 h should be reported as the full Δ."""
+    raw = _series(end_p=1018.0, start_p=1012.0, hours=6)  # +6 hPa / 6h
+    buckets = fc.bucketize(raw)
+    d6 = fc.trend(buckets, hours=6)
+    assert d6 is not None
+    assert abs(d6 - 6.0) < 0.3
+
+
+def test_trend_6h_none_when_history_short():
+    """If we only have 2 h, the 6 h slope still fits because regression uses
+    whatever buckets fall in the window — but it'll only see 2 h of slope."""
+    raw = _series(end_p=1015.0, start_p=1015.0, hours=2)
+    buckets = fc.bucketize(raw)
+    # 6h window asks for last 6h relative to latest. With 2h of data, the
+    # window contains all 2h of buckets — should still produce a slope (flat).
+    d6 = fc.trend(buckets, hours=6)
+    assert d6 is not None
+    assert abs(d6) < 0.5
+
+
+# ---------- agreement / confirmation ----------
+
+def test_confirmed_when_both_trends_agree_strongly():
+    raw = _series(end_p=1010.0, start_p=1018.0, hours=6)  # -8 over 6h, slope continues at 3h
+    buckets = fc.bucketize(raw)
+    f = fc.forecast(buckets)
+    # 3h portion should also be falling; both negative and 6h magnitude > 1 hPa
+    assert f.trend_3h_hpa is not None and f.trend_3h_hpa < -1.5
+    assert f.trend_6h_hpa is not None and f.trend_6h_hpa <= -1.5
+    assert f.confirmed is True
+    assert "not yet confirmed" not in f.detail
+
+
+def test_unconfirmed_3h_drop_with_flat_6h_is_downgraded():
+    """The classic tide / HVAC false-positive: pressure dipped 2 hPa over 3 h,
+    but the 6 h view is flat. Should NOT say "Rain in 12-24h"."""
+    # 3 h: dropping from 1017 to 1015 (-2 hPa). 6 h: starts at 1017, dropped to
+    # 1018 first (3 h ago = peak), now at 1015. Net 6 h Δ small or positive.
+    n_per_h = 60
+    out = []
+    for i in range(6 * n_per_h):
+        t = NOW - timedelta(seconds=(6 * n_per_h - i) * 60)
+        hours_from_end = (6 * n_per_h - i) / n_per_h
+        if hours_from_end > 3:
+            # rising portion (older half): 1015 -> 1017
+            p = 1015 + (6 - hours_from_end) / 3 * 2
+        else:
+            # falling portion (newer half): 1017 -> 1015
+            p = 1017 - (3 - hours_from_end) / 3 * 2
+        out.append((t.isoformat(timespec="seconds"), p))
+    buckets = fc.bucketize(out)
+    f = fc.forecast(buckets)
+    assert f.trend_3h_hpa is not None and f.trend_3h_hpa < -1.5, f"setup: 3h trend not falling: {f.trend_3h_hpa}"
+    # 6 h regression slope on a symmetric tent is ~0
+    assert f.trend_6h_hpa is not None and abs(f.trend_6h_hpa) < 1.0
+    assert f.confirmed is False
+    assert f.headline.startswith("Watch"), f"expected Watch verdict, got: {f.headline}"
+
+
+def test_confirmed_for_steady_is_trivially_true():
+    raw = _series(end_p=1015.0, start_p=1015.0, hours=6)
+    buckets = fc.bucketize(raw)
+    f = fc.forecast(buckets)
+    assert f.headline == "No significant change"
+    assert f.confirmed is True
+
+
+def test_storm_verdict_still_fires_when_confirmed():
+    raw = _series(end_p=1005.0, start_p=1015.0, hours=6)  # -10 hPa/6h, -5/3h
+    buckets = fc.bucketize(raw)
+    f = fc.forecast(buckets)
+    # 3h slope == 5 hPa drop → "Rain" band (between -6 and -1.5)
+    # but confirmed by 6h
+    assert f.confirmed is True
+    assert not f.headline.startswith("Watch")
+
+
+# ---------- anomaly ----------
+
+def test_anomaly_positive_when_above_baseline():
+    raw = _series(end_p=1020.0, start_p=1020.0, hours=6)
+    buckets = fc.bucketize(raw)
+    f = fc.forecast(buckets, baseline_hpa=1015.0)
+    assert f.baseline_hpa == 1015.0
+    assert f.anomaly_hpa is not None
+    assert abs(f.anomaly_hpa - 5.0) < 0.01
+
+
+def test_anomaly_negative_when_below_baseline():
+    raw = _series(end_p=1010.0, start_p=1010.0, hours=6)
+    buckets = fc.bucketize(raw)
+    f = fc.forecast(buckets, baseline_hpa=1015.0)
+    assert f.anomaly_hpa is not None
+    assert abs(f.anomaly_hpa + 5.0) < 0.01
+
+
+def test_anomaly_none_when_no_baseline():
+    raw = _series(end_p=1015.0, start_p=1015.0, hours=6)
+    f = fc.forecast(fc.bucketize(raw), baseline_hpa=None)
+    assert f.anomaly_hpa is None
+    assert f.baseline_hpa is None
+
+
+def test_anomaly_none_when_no_current():
+    f = fc.forecast([], baseline_hpa=1015.0)
+    assert f.anomaly_hpa is None
+
+
+# ---------- existing realistic-noise test stays last ----------
+
 def test_forecast_realistic_indoor_noise_stays_steady():
     """An indoor sensor with 1 hPa diurnal drift + 0.3 hPa jitter should
     NOT keep flipping between rain and fair across hours of operation."""

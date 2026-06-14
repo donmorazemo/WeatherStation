@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2026-06-13b]
+
+### Added — 6 h Confirm Trend + 7-Day Anomaly
+- Added a second 6-hour regression slope (`trend_6h_hpa`) used to *confirm* the primary 3 h verdict. Filters the most common false positive — the semi-diurnal atmospheric pressure tide (~1 hPa rise/fall twice a day) and short HVAC bumps that look like a real front over 3 h but don't sustain over 6 h.
+- When the 3 h trend is non-steady but the 6 h trend doesn't back it up (different sign or magnitude < 1 hPa), the verdict is downgraded to `Watch — possible front/clearing, not yet confirmed` rather than confidently predicting rain or fair weather. UI shows a `Confirmed` / `Unconfirmed` badge next to the headline.
+- Added a 7-day rolling baseline (`baseline_hpa`) and anomaly (`anomaly_hpa = current − baseline`), surfaced on the page as a colored pill under the current reading. Lets you tell whether the current pressure is high or low relative to recent weather, not just where it's trending.
+- Tests: +10 new pytest cases (31 total) covering 6 h slope, agreement/downgrade, anomaly math, and a tent-shaped tide pattern that the old version would have falsely called rain.
+
+---
+
 ## [2026-06-13]
 
 ### Fixed — Forecast Reliability

@@ -30,12 +30,23 @@ from typing import Iterable
 BUCKET_MINUTES = 10
 TREND_HOURS = 3
 NOWCAST_HOURS = 1
+CONFIRM_HOURS = 6              # secondary window used to confirm the 3 h trend
 FORECAST_HORIZON_HOURS = 12
 HISTORY_HOURS = 72
+BASELINE_DAYS = 7              # rolling baseline for pressure anomaly
 
 # Need at least this fraction of the trend window populated before we'll
 # publish a verdict. 60% of 3h = ~1.8 h of buckets, ~11 of 18 expected.
 MIN_COVERAGE = 0.60
+
+# Confirmation rules. The 3 h window is the primary verdict (matches WMO /
+# Zambretti / METAR practice). The 6 h window confirms or downgrades it.
+# A meaningful trend at 3 h is one that exceeds the steady band (±1.5 hPa).
+# We call it "confirmed" iff the 6 h trend has the same sign AND magnitude
+# above CONFIRM_MIN_MAGNITUDE hPa over 6h — i.e. the trend is sustained, not
+# just the afternoon atmospheric tide peak.
+CONFIRM_MIN_MAGNITUDE = 1.0    # hPa over the 6 h window
+STEADY_BAND = 1.5              # 3 h Δ within ±STEADY_BAND is always "steady"
 
 
 @dataclass(frozen=True)
@@ -50,11 +61,15 @@ class Forecast:
     detail: str               # longer plain-English explanation
     trend_3h_hpa: float | None    # slope-derived Δ over the 3 h trend window
     trend_1h_hpa: float | None    # slope-derived Δ over the 1 h nowcast window
+    trend_6h_hpa: float | None    # slope-derived Δ over the 6 h confirm window
     current_hpa: float | None
     horizon_hours: int
     sample_count: int             # total buckets in the input history
     data_span_hours: float        # actual span (newest − oldest) in input
     trend_coverage_pct: float     # % of the 3 h window populated with buckets
+    anomaly_hpa: float | None     # current pressure minus 7-day baseline
+    baseline_hpa: float | None    # 7-day mean (caller supplies, sourced from DB)
+    confirmed: bool               # 3 h trend sign confirmed by 6 h trend
 
 
 def _parse_ts(ts: str) -> datetime:
@@ -159,13 +174,13 @@ def _verdict(delta_3h: float | None) -> tuple[str, str]:
             "Pressure is falling rapidly (more than 6 hPa in 3 hours). "
             "Expect strong winds and heavy rain soon. Secure loose items outside.",
         )
-    if d <= -1.5:
+    if d <= -STEADY_BAND:
         return (
             "Rain or clouds within 12–24 hours",
             "Pressure is falling steadily. A weather front is moving in — "
             "expect increasing cloud, then rain within a day.",
         )
-    if d < 1.5:
+    if d < STEADY_BAND:
         return (
             "No significant change",
             "Pressure is steady. Whatever weather you have now is likely to "
@@ -184,35 +199,97 @@ def _verdict(delta_3h: float | None) -> tuple[str, str]:
     )
 
 
-def forecast(buckets: list[Bucket]) -> Forecast:
-    """Build the full forecast object from bucketed history."""
+def _confirmed(delta_3h: float | None, delta_6h: float | None) -> bool:
+    """True iff the 3 h trend's sign and magnitude are backed by the 6 h trend.
+
+    Rules:
+    - A 3 h reading inside the steady band is trivially "confirmed" (we're
+      saying nothing is happening — no need to corroborate).
+    - For a non-steady 3 h reading, require:
+        * 6 h trend exists,
+        * same sign,
+        * |6 h Δ| ≥ CONFIRM_MIN_MAGNITUDE.
+      This filters the afternoon atmospheric tide (~1 hPa over 3 h that
+      doesn't continue over 6 h).
+    """
+    if delta_3h is None:
+        return False
+    if abs(delta_3h) < STEADY_BAND:
+        return True
+    if delta_6h is None:
+        return False
+    if (delta_3h > 0) != (delta_6h > 0):
+        return False
+    return abs(delta_6h) >= CONFIRM_MIN_MAGNITUDE
+
+
+def _downgrade_unconfirmed(headline: str, detail: str, delta_3h: float,
+                           delta_6h: float | None) -> tuple[str, str]:
+    """Soften an unconfirmed 3 h verdict to a 'watch'."""
+    d6_text = (f"{delta_6h:+.1f} hPa over 6 h" if delta_6h is not None
+               else "no 6 h reading yet")
+    if delta_3h < 0:
+        return (
+            "Watch — possible front, not yet confirmed",
+            f"Pressure dipped {delta_3h:+.1f} hPa over the last 3 h, but the "
+            f"6-hour view ({d6_text}) doesn't back it up. Could be an "
+            f"approaching front or just the afternoon pressure tide / a local "
+            f"HVAC bump. Will firm up the verdict if the drop continues.",
+        )
+    return (
+        "Watch — possible clearing, not yet confirmed",
+        f"Pressure rose {delta_3h:+.1f} hPa over the last 3 h, but the "
+        f"6-hour view ({d6_text}) doesn't back it up. Could be a real high "
+        f"moving in or just the morning pressure tide. Will firm up the "
+        f"verdict if the rise continues.",
+    )
+
+
+def forecast(buckets: list[Bucket], baseline_hpa: float | None = None) -> Forecast:
+    """Build the full forecast object from bucketed history.
+
+    `baseline_hpa` is the 7-day mean pressure (caller computes from DB). When
+    provided, the anomaly = current − baseline is reported.
+    """
     current = buckets[-1].pressure_hpa if buckets else None
     cov_3h = coverage(buckets, TREND_HOURS)
     span = data_span_hours(buckets)
 
+    d1 = trend(buckets, NOWCAST_HOURS)
+    d3 = trend(buckets, TREND_HOURS) if cov_3h >= MIN_COVERAGE else None
+    d6 = trend(buckets, CONFIRM_HOURS)
+    confirmed = _confirmed(d3, d6)
+
     # Coverage gate: refuse to issue a real verdict if the trend window is
     # too sparse. Avoids the "30 min of data → confident 12h forecast" trap.
-    if cov_3h < MIN_COVERAGE:
+    if d3 is None:
         headline = "Collecting data"
         detail = (
             f"Have {span:.1f} h of readings — need at least "
             f"{TREND_HOURS * MIN_COVERAGE:.1f} h before forecasting."
         )
-        d3 = None
-        d1 = trend(buckets, NOWCAST_HOURS)
     else:
-        d3 = trend(buckets, TREND_HOURS)
-        d1 = trend(buckets, NOWCAST_HOURS)
         headline, detail = _verdict(d3)
+        # If 3 h is outside the steady band but the 6 h doesn't confirm it,
+        # downgrade to a "watch" rather than a confident verdict.
+        if abs(d3) >= STEADY_BAND and not confirmed:
+            headline, detail = _downgrade_unconfirmed(headline, detail, d3, d6)
+
+    anomaly = (round(current - baseline_hpa, 2)
+               if (current is not None and baseline_hpa is not None) else None)
 
     return Forecast(
         headline=headline,
         detail=detail,
         trend_3h_hpa=d3,
         trend_1h_hpa=d1,
+        trend_6h_hpa=d6,
         current_hpa=current,
         horizon_hours=FORECAST_HORIZON_HOURS,
         sample_count=len(buckets),
         data_span_hours=round(span, 2),
         trend_coverage_pct=round(cov_3h * 100, 1),
+        anomaly_hpa=anomaly,
+        baseline_hpa=round(baseline_hpa, 2) if baseline_hpa is not None else None,
+        confirmed=confirmed,
     )

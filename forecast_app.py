@@ -24,17 +24,34 @@ def _connect() -> sqlite3.Connection:
     return sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
 
 
-def _fetch_window(hours: int) -> list[tuple[str, float]]:
+def _fetch_window(hours: float) -> list[tuple[str, float]]:
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds")
     conn = _connect()
     try:
         rows = conn.execute(
-            "SELECT ts, pressure_hpa FROM readings WHERE ts >= ? ORDER BY ts ASC",
+            "SELECT ts, pressure_hpa FROM readings WHERE ts >= ? "
+            "ORDER BY ts ASC LIMIT 200000",
             (cutoff,),
         ).fetchall()
     finally:
         conn.close()
     return [(r[0], float(r[1])) for r in rows]
+
+
+def _fetch_baseline(days: int) -> float | None:
+    """7-day mean pressure for the anomaly. Single SQL AVG, no bucketing."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT AVG(pressure_hpa), COUNT(*) FROM readings WHERE ts >= ?",
+            (cutoff,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row or row[0] is None or row[1] < 100:
+        return None  # not enough samples to call it a baseline
+    return float(row[0])
 
 
 @app.route("/")
@@ -65,15 +82,23 @@ def api_series():
 
 @app.route("/api/forecast")
 def api_forecast():
-    raw = _fetch_window(fc.HISTORY_HOURS)
+    # We need at least 6 h for the confirm trend; the display still uses
+    # HISTORY_HOURS via /api/series.
+    raw = _fetch_window(max(fc.HISTORY_HOURS, fc.CONFIRM_HOURS * 2))
     buckets = fc.bucketize(raw)
-    f = fc.forecast(buckets)
+    baseline = _fetch_baseline(fc.BASELINE_DAYS)
+    f = fc.forecast(buckets, baseline_hpa=baseline)
     return jsonify({
         "headline": f.headline,
         "detail": f.detail,
         "current_hpa": round(f.current_hpa, 2) if f.current_hpa is not None else None,
-        "trend_3h_hpa": round(f.trend_3h_hpa, 2) if f.trend_3h_hpa is not None else None,
         "trend_1h_hpa": round(f.trend_1h_hpa, 2) if f.trend_1h_hpa is not None else None,
+        "trend_3h_hpa": round(f.trend_3h_hpa, 2) if f.trend_3h_hpa is not None else None,
+        "trend_6h_hpa": round(f.trend_6h_hpa, 2) if f.trend_6h_hpa is not None else None,
+        "confirmed": f.confirmed,
+        "baseline_hpa": f.baseline_hpa,
+        "anomaly_hpa": f.anomaly_hpa,
+        "baseline_days": fc.BASELINE_DAYS,
         "horizon_hours": f.horizon_hours,
         "history_hours": fc.HISTORY_HOURS,
         "sample_count": f.sample_count,

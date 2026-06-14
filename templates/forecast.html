@@ -48,6 +48,33 @@
     }
     .forecast-detail { font-size: 0.95rem; color: #94a3b8; line-height: 1.5; }
     .forecast-basis  { font-size: 0.75rem; color: #475569; margin-top: 0.9rem; letter-spacing: 0.02em; }
+    .confirm-badge {
+      display: inline-block;
+      margin-left: 0.6rem;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      vertical-align: middle;
+    }
+    .confirm-yes { background: #14532d; color: #4ade80; }
+    .confirm-no  { background: #422006; color: #fbbf24; }
+    .anomaly-pill {
+      display: inline-block;
+      margin-top: 0.5rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      background: #0f172a;
+      color: #64748b;
+      border: 1px solid #334155;
+    }
+    .anomaly-high { color: #4ade80; border-color: #14532d; }
+    .anomaly-low  { color: #f87171; border-color: #422006; }
+    .hint { color: #475569; font-weight: 400; font-size: 0.7em; }
     .metrics {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -107,7 +134,9 @@
 
     <div class="forecast-card">
       <div class="forecast-label">Next {{ horizon_hours }} hours</div>
-      <div class="forecast-headline" id="headline">—</div>
+      <div class="forecast-headline">
+        <span id="headline">—</span><span id="confirm-badge"></span>
+      </div>
       <div class="forecast-detail" id="detail">Loading…</div>
       <div class="forecast-basis" id="basis">&nbsp;</div>
     </div>
@@ -117,6 +146,7 @@
         <div class="metric-label">Now</div>
         <div class="metric-value pressure-value" id="current">—</div>
         <div class="metric-label" style="margin-top:0.4rem;">hPa</div>
+        <div class="anomaly-pill" id="anomaly">—</div>
       </div>
       <div class="metric">
         <div class="metric-label">Δ last hour</div>
@@ -124,8 +154,13 @@
         <div class="metric-label" style="margin-top:0.4rem;">hPa</div>
       </div>
       <div class="metric">
-        <div class="metric-label">Δ last 3 hours</div>
+        <div class="metric-label">Δ last 3 h</div>
         <div class="metric-value" id="d3">—</div>
+        <div class="metric-label" style="margin-top:0.4rem;">hPa</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Δ last 6 h <span class="hint">(confirm)</span></div>
+        <div class="metric-value" id="d6">—</div>
         <div class="metric-label" style="margin-top:0.4rem;">hPa</div>
       </div>
     </div>
@@ -165,21 +200,55 @@
       const f = await res.json();
       document.getElementById("headline").textContent = f.headline;
       document.getElementById("detail").textContent = f.detail;
+
+      const badge = document.getElementById("confirm-badge");
+      if (f.trend_3h_hpa === null || f.headline === "Collecting data") {
+        badge.textContent = "";
+        badge.className = "";
+      } else if (f.confirmed) {
+        badge.textContent = "Confirmed";
+        badge.className = "confirm-badge confirm-yes";
+      } else {
+        badge.textContent = "Unconfirmed";
+        badge.className = "confirm-badge confirm-no";
+      }
+
       const basis = document.getElementById("basis");
       if (f.data_span_hours !== undefined) {
-        basis.textContent =
-          `Based on ${f.data_span_hours.toFixed(1)} h of readings · ` +
-          `${f.sample_count} samples · ` +
-          `${f.trend_coverage_pct.toFixed(0)}% coverage of the 3 h trend window`;
+        let s = `Based on ${f.data_span_hours.toFixed(1)} h of readings · ` +
+                `${f.sample_count} samples · ` +
+                `${f.trend_coverage_pct.toFixed(0)}% coverage of the 3 h window`;
+        if (f.baseline_hpa !== null && f.baseline_hpa !== undefined) {
+          s += ` · ${f.baseline_days}-day baseline ${f.baseline_hpa.toFixed(2)} hPa`;
+        }
+        basis.textContent = s;
       }
+
       document.getElementById("current").textContent =
         f.current_hpa !== null ? f.current_hpa.toFixed(2) : "—";
+
+      const anomaly = document.getElementById("anomaly");
+      if (f.anomaly_hpa === null || f.anomaly_hpa === undefined) {
+        anomaly.textContent = `${f.baseline_days}-day baseline pending`;
+        anomaly.className = "anomaly-pill";
+      } else {
+        const sign = f.anomaly_hpa > 0 ? "+" : "";
+        anomaly.textContent = `${sign}${f.anomaly_hpa.toFixed(2)} vs ${f.baseline_days}-day mean`;
+        let cls = "anomaly-pill";
+        if (f.anomaly_hpa > 0.5) cls += " anomaly-high";
+        else if (f.anomaly_hpa < -0.5) cls += " anomaly-low";
+        anomaly.className = cls;
+      }
+
       const d1 = document.getElementById("d1");
       const d3 = document.getElementById("d3");
+      const d6 = document.getElementById("d6");
       d1.textContent = fmtDelta(f.trend_1h_hpa);
       d1.className = "metric-value " + trendClass(f.trend_1h_hpa);
       d3.textContent = fmtDelta(f.trend_3h_hpa);
       d3.className = "metric-value " + trendClass(f.trend_3h_hpa);
+      d6.textContent = fmtDelta(f.trend_6h_hpa);
+      d6.className = "metric-value " + trendClass(f.trend_6h_hpa);
     }
 
     const MIN_Y_RANGE_HPA = 4;  // pad so tiny indoor pressure swings don't look dramatic

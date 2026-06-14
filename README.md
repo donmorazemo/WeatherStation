@@ -90,6 +90,14 @@ beyond that you need wind, humidity, satellite data, etc.
   trends just don't carry useful signal further out than that.
 - **Trend window — 3 hours.** Standard barograph slope window; long enough to
   ignore short bumps, short enough to react to incoming fronts.
+- **Confirm window — 6 hours.** A second regression slope used to confirm the
+  3-hour verdict. If they don't agree (different sign, or 6 h magnitude under
+  1 hPa), the page shows `Watch — not yet confirmed` instead of a confident
+  rain/fair call. This filters the semi-diurnal atmospheric pressure tide
+  (~1 hPa twice a day) and short HVAC events.
+- **Baseline window — 7 days.** Rolling mean pressure used to compute the
+  *anomaly* (current − baseline). Tells you whether you're sitting in a high
+  or a low relative to the recent regime — context the trend alone can't give.
 
 Endpoints:
 - `GET /` — dashboard
