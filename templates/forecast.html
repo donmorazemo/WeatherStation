@@ -47,6 +47,7 @@
       line-height: 1.2;
     }
     .forecast-detail { font-size: 0.95rem; color: #94a3b8; line-height: 1.5; }
+    .forecast-basis  { font-size: 0.75rem; color: #475569; margin-top: 0.9rem; letter-spacing: 0.02em; }
     .metrics {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -108,6 +109,7 @@
       <div class="forecast-label">Next {{ horizon_hours }} hours</div>
       <div class="forecast-headline" id="headline">—</div>
       <div class="forecast-detail" id="detail">Loading…</div>
+      <div class="forecast-basis" id="basis">&nbsp;</div>
     </div>
 
     <div class="metrics">
@@ -163,6 +165,13 @@
       const f = await res.json();
       document.getElementById("headline").textContent = f.headline;
       document.getElementById("detail").textContent = f.detail;
+      const basis = document.getElementById("basis");
+      if (f.data_span_hours !== undefined) {
+        basis.textContent =
+          `Based on ${f.data_span_hours.toFixed(1)} h of readings · ` +
+          `${f.sample_count} samples · ` +
+          `${f.trend_coverage_pct.toFixed(0)}% coverage of the 3 h trend window`;
+      }
       document.getElementById("current").textContent =
         f.current_hpa !== null ? f.current_hpa.toFixed(2) : "—";
       const d1 = document.getElementById("d1");
@@ -173,13 +182,31 @@
       d3.className = "metric-value " + trendClass(f.trend_3h_hpa);
     }
 
+    const MIN_Y_RANGE_HPA = 4;  // pad so tiny indoor pressure swings don't look dramatic
+
+    function paddedYBounds(points) {
+      if (!points.length) return { min: undefined, max: undefined };
+      let lo = Infinity, hi = -Infinity;
+      for (const p of points) { if (p.y < lo) lo = p.y; if (p.y > hi) hi = p.y; }
+      const span = hi - lo;
+      if (span >= MIN_Y_RANGE_HPA) {
+        const pad = span * 0.08;
+        return { min: lo - pad, max: hi + pad };
+      }
+      const mid = (lo + hi) / 2;
+      return { min: mid - MIN_Y_RANGE_HPA / 2, max: mid + MIN_Y_RANGE_HPA / 2 };
+    }
+
     async function loadSeries() {
       const res = await fetch(`/api/series?hours=${HISTORY_HOURS}`);
       if (!res.ok) throw new Error("series");
       const s = await res.json();
       const points = s.points.map(p => ({ x: new Date(p.ts.replace("+00:00", "Z")), y: p.pressure_hpa }));
+      const yb = paddedYBounds(points);
       if (chart) {
         chart.data.datasets[0].data = points;
+        chart.options.scales.y.min = yb.min;
+        chart.options.scales.y.max = yb.max;
         chart.update("none");
         return;
       }
@@ -212,6 +239,8 @@
               ticks: { color: "#64748b" },
               grid: { color: "rgba(100,116,139,0.12)" },
               title: { display: true, text: "hPa", color: "#64748b" },
+              min: yb.min,
+              max: yb.max,
             },
           },
           plugins: {

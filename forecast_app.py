@@ -77,6 +77,8 @@ def api_forecast():
         "horizon_hours": f.horizon_hours,
         "history_hours": fc.HISTORY_HOURS,
         "sample_count": f.sample_count,
+        "data_span_hours": f.data_span_hours,
+        "trend_coverage_pct": f.trend_coverage_pct,
     })
 
 

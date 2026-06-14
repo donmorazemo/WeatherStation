@@ -5,13 +5,19 @@ Pure functions — no I/O. Given a sequence of (ts_iso, pressure_hpa) readings
 from the existing weather.db, we:
 
   1. Downsample into fixed-width time buckets (default 10 min) by averaging.
-  2. Compute the pressure change over the last 3 hours (Zambretti's window).
-  3. Map that change to a plain-English forecast for the next ~12 hours.
+  2. Compute the pressure tendency over the last 3 hours as a *linear-regression
+     slope*, not an endpoint difference. A single noisy bucket can no longer
+     swing the verdict.
+  3. Map that tendency to a plain-English forecast for the next ~12 hours.
 
 The trend-based mapping is altitude-independent: a Δ of -5 hPa over 3 hours
 means the same thing whether the sensor sits at sea level or on a mountain.
 That is why we ignore absolute pressure tiers here — the BMP280 reports raw
 station pressure and we do not assume a known altitude offset.
+
+Coverage gate: we refuse to issue a verdict unless the trend window has at
+least MIN_COVERAGE buckets actually present. A 30-minute trickle of data is
+not a 3-hour forecast.
 """
 
 from __future__ import annotations
@@ -27,6 +33,10 @@ NOWCAST_HOURS = 1
 FORECAST_HORIZON_HOURS = 12
 HISTORY_HOURS = 72
 
+# Need at least this fraction of the trend window populated before we'll
+# publish a verdict. 60% of 3h = ~1.8 h of buckets, ~11 of 18 expected.
+MIN_COVERAGE = 0.60
+
 
 @dataclass(frozen=True)
 class Bucket:
@@ -38,11 +48,13 @@ class Bucket:
 class Forecast:
     headline: str             # one-line verdict
     detail: str               # longer plain-English explanation
-    trend_3h_hpa: float | None
-    trend_1h_hpa: float | None
+    trend_3h_hpa: float | None    # slope-derived Δ over the 3 h trend window
+    trend_1h_hpa: float | None    # slope-derived Δ over the 1 h nowcast window
     current_hpa: float | None
     horizon_hours: int
-    sample_count: int
+    sample_count: int             # total buckets in the input history
+    data_span_hours: float        # actual span (newest − oldest) in input
+    trend_coverage_pct: float     # % of the 3 h window populated with buckets
 
 
 def _parse_ts(ts: str) -> datetime:
@@ -56,7 +68,6 @@ def bucketize(
     bucket_minutes: int = BUCKET_MINUTES,
 ) -> list[Bucket]:
     """Average raw readings into fixed-width time buckets, sorted ascending."""
-    width = timedelta(minutes=bucket_minutes)
     sums: dict[datetime, list[float]] = {}
     for ts, p in readings:
         dt = _parse_ts(ts)
@@ -72,26 +83,64 @@ def bucketize(
     ]
 
 
-def _pressure_at(buckets: list[Bucket], target: datetime, tolerance_min: int = 20) -> float | None:
-    """Return the bucketed pressure nearest `target`, within tolerance, else None."""
+def _window(buckets: list[Bucket], hours: float) -> list[Bucket]:
+    """Buckets within `hours` of the latest bucket (inclusive of latest)."""
     if not buckets:
-        return None
-    nearest = min(buckets, key=lambda b: abs(b.ts - target))
-    if abs(nearest.ts - target) <= timedelta(minutes=tolerance_min):
-        return nearest.pressure_hpa
-    return None
+        return []
+    cutoff = buckets[-1].ts - timedelta(hours=hours)
+    return [b for b in buckets if b.ts >= cutoff]
 
 
-def trend(buckets: list[Bucket], hours: int) -> float | None:
-    """Pressure Δ over the last `hours` hours (hPa). None if not enough data."""
+def _slope_hpa_per_hour(window: list[Bucket]) -> float | None:
+    """Least-squares slope of pressure vs time (hPa per hour) over the window.
+
+    Robust to single-point sensor jitter: a 0.3 hPa noise spike on one bucket
+    barely moves the regression line, whereas an endpoint-difference would
+    pick up the full 0.3 hPa.
+    """
+    n = len(window)
+    if n < 3:
+        return None
+    x0 = window[0].ts.timestamp()
+    xs = [(b.ts.timestamp() - x0) / 3600.0 for b in window]  # hours
+    ys = [b.pressure_hpa for b in window]
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    num = sum((xs[i] - mean_x) * (ys[i] - mean_y) for i in range(n))
+    den = sum((xs[i] - mean_x) ** 2 for i in range(n))
+    if den == 0:
+        return None
+    return num / den
+
+
+def trend(buckets: list[Bucket], hours: float) -> float | None:
+    """Pressure Δ over the last `hours` hours, computed as slope × hours.
+
+    Returns None if the window has too few buckets to fit a line.
+    """
+    win = _window(buckets, hours)
+    slope = _slope_hpa_per_hour(win)
+    if slope is None:
+        return None
+    return slope * hours
+
+
+def coverage(buckets: list[Bucket], hours: float, bucket_minutes: int = BUCKET_MINUTES) -> float:
+    """Fraction (0..1) of the trailing `hours` window that has buckets.
+
+    Compared against the theoretical maximum (hours * 60 / bucket_minutes).
+    """
     if not buckets:
-        return None
-    latest = buckets[-1]
-    past_target = latest.ts - timedelta(hours=hours)
-    past = _pressure_at(buckets, past_target, tolerance_min=20)
-    if past is None:
-        return None
-    return latest.pressure_hpa - past
+        return 0.0
+    win = _window(buckets, hours)
+    expected = max(1.0, hours * 60.0 / bucket_minutes)
+    return min(1.0, len(win) / expected)
+
+
+def data_span_hours(buckets: list[Bucket]) -> float:
+    if len(buckets) < 2:
+        return 0.0
+    return (buckets[-1].ts - buckets[0].ts).total_seconds() / 3600.0
 
 
 def _verdict(delta_3h: float | None) -> tuple[str, str]:
@@ -102,7 +151,7 @@ def _verdict(delta_3h: float | None) -> tuple[str, str]:
     sustained is the classic storm signal.
     """
     if delta_3h is None:
-        return ("Collecting data", "Need at least 3 hours of readings to forecast.")
+        return ("Collecting data", "Need more readings before we can forecast.")
     d = delta_3h
     if d <= -6.0:
         return (
@@ -138,9 +187,24 @@ def _verdict(delta_3h: float | None) -> tuple[str, str]:
 def forecast(buckets: list[Bucket]) -> Forecast:
     """Build the full forecast object from bucketed history."""
     current = buckets[-1].pressure_hpa if buckets else None
-    d3 = trend(buckets, TREND_HOURS)
-    d1 = trend(buckets, NOWCAST_HOURS)
-    headline, detail = _verdict(d3)
+    cov_3h = coverage(buckets, TREND_HOURS)
+    span = data_span_hours(buckets)
+
+    # Coverage gate: refuse to issue a real verdict if the trend window is
+    # too sparse. Avoids the "30 min of data → confident 12h forecast" trap.
+    if cov_3h < MIN_COVERAGE:
+        headline = "Collecting data"
+        detail = (
+            f"Have {span:.1f} h of readings — need at least "
+            f"{TREND_HOURS * MIN_COVERAGE:.1f} h before forecasting."
+        )
+        d3 = None
+        d1 = trend(buckets, NOWCAST_HOURS)
+    else:
+        d3 = trend(buckets, TREND_HOURS)
+        d1 = trend(buckets, NOWCAST_HOURS)
+        headline, detail = _verdict(d3)
+
     return Forecast(
         headline=headline,
         detail=detail,
@@ -149,32 +213,6 @@ def forecast(buckets: list[Bucket]) -> Forecast:
         current_hpa=current,
         horizon_hours=FORECAST_HORIZON_HOURS,
         sample_count=len(buckets),
+        data_span_hours=round(span, 2),
+        trend_coverage_pct=round(cov_3h * 100, 1),
     )
-
-
-if __name__ == "__main__":
-    # Quick smoke test with synthetic data: a 5 hPa drop over 3h → "Rain likely"
-    import random
-
-    now = datetime.now(timezone.utc)
-    rng = random.Random(0)
-    synthetic: list[tuple[str, float]] = []
-    for i in range(HISTORY_HOURS * 60):  # 1-minute samples
-        t = now - timedelta(minutes=HISTORY_HOURS * 60 - i)
-        # Flat at 1015 for 69h, then drop 5 hPa linearly over last 3h
-        hours_from_end = (HISTORY_HOURS * 60 - i) / 60
-        if hours_from_end < 3:
-            p = 1015 - (3 - hours_from_end) / 3 * 5
-        else:
-            p = 1015
-        p += rng.uniform(-0.05, 0.05)
-        synthetic.append((t.isoformat(timespec="seconds"), p))
-
-    bs = bucketize(synthetic)
-    f = forecast(bs)
-    print(f"Buckets: {len(bs)}")
-    print(f"Current: {f.current_hpa:.2f} hPa")
-    print(f"Δ 3h: {f.trend_3h_hpa:+.2f} hPa")
-    print(f"Δ 1h: {f.trend_1h_hpa:+.2f} hPa")
-    print(f"Verdict: {f.headline}")
-    print(f"Detail: {f.detail}")
