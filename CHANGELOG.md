@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2026-06-13]
+
+### Fixed — Forecast Reliability
+- Replaced the 3-hour trend computation (endpoint-difference) with a least-squares regression slope across the window. Single ±0.3 hPa sensor jitter no longer swings the verdict.
+- Added a coverage gate: the verdict is held back as "Collecting data" unless ≥60% of the 3-hour trend window is populated. Prevents 30 min of readings producing a confident 12-hour forecast.
+- `/api/forecast` now returns `data_span_hours` and `trend_coverage_pct`; the page shows both so you can see what data backs the verdict.
+- Chart Y-axis padded to a minimum 4 hPa range so calm pressure doesn't visually look like dramatic swings.
+- Added `tests/test_forecast.py` (21 pytest cases) covering bucketing, regression vs endpoint behaviour, noise robustness, coverage gating, all verdict branches, edge cases, and realistic indoor noise + HVAC drift.
+
+---
+
 ## [2026-06-12]
 
 ### Added — Pressure Forecast Service
