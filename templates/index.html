@@ -79,6 +79,65 @@
     .fan-on  { background: #166534; color: #4ade80; }
     .fan-off { background: #1e293b; color: #64748b; border: 1px solid #334155; }
 
+    .fan-control {
+      background: #1e293b;
+      border-radius: 1rem;
+      padding: 1.5rem 2rem;
+      width: 100%;
+      max-width: 360px;
+      margin-bottom: 1.5rem;
+      text-align: center;
+    }
+
+    .fan-control h2 {
+      font-size: 0.75rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 1rem;
+    }
+
+    .fan-modes {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .fan-modes button {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.7rem 0;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+
+    .fan-modes button:hover { border-color: #475569; }
+
+    .fan-modes button.active {
+      background: #f97316;
+      border-color: #f97316;
+      color: #fff;
+    }
+
+    .fan-mode-hint {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 0.75rem;
+      min-height: 1.1em;
+    }
+
+    .pressure-minor {
+      font-size: 0.8rem;
+      color: #475569;
+      margin-bottom: 0.5rem;
+    }
+
+    .pressure-minor span { color: #64748b; }
+
     .threshold-section {
       background: #1e293b;
       border-radius: 1rem;
@@ -171,21 +230,28 @@
       <div class="card-sub" id="temp-c">-- °C</div>
       <div id="fan-badge" class="fan-badge fan-off">FAN OFF</div>
     </div>
-    <div class="card">
-      <div class="card-label">Pressure</div>
-      <div class="card-value pressure-value" id="pressure">--</div>
-      <div class="card-sub">hPa</div>
+  </div>
+
+  <div class="fan-control">
+    <h2>Fan control</h2>
+    <div class="fan-modes">
+      <button id="mode-auto" onclick="setFanMode('auto')">Auto</button>
+      <button id="mode-on" onclick="setFanMode('on')">On</button>
+      <button id="mode-off" onclick="setFanMode('off')">Off</button>
     </div>
+    <div class="fan-mode-hint" id="fan-mode-hint"></div>
   </div>
 
   <div class="threshold-section">
-    <h2>Fan turns on above</h2>
+    <h2>Auto: fan turns on above</h2>
     <div class="threshold-row">
       <input type="number" id="threshold-input" step="0.5" placeholder="°F">
       <button id="save-btn" onclick="saveThreshold()">Save</button>
     </div>
     <div class="save-status" id="save-status"></div>
   </div>
+
+  <div class="pressure-minor">Pressure: <span id="pressure">--</span> hPa</div>
 
   <div class="timestamps">
     <div class="updated">Reading taken: <span id="reading-time">--</span></div>
@@ -214,6 +280,8 @@
           badge.className = "fan-badge fan-off";
         }
 
+        reflectFanMode(d.fan_mode);
+
         const input = document.getElementById("threshold-input");
         if (document.activeElement !== input) {
           input.value = (d.threshold_c * 9 / 5 + 32).toFixed(1);
@@ -227,6 +295,35 @@
         document.getElementById("error-msg").style.display = "none";
       } catch {
         document.getElementById("error-msg").style.display = "block";
+      }
+    }
+
+    const FAN_MODE_HINTS = {
+      auto: "Fan follows the temperature threshold below.",
+      on: "Fan forced ON — ignores temperature.",
+      off: "Fan forced OFF — ignores temperature."
+    };
+
+    function reflectFanMode(mode) {
+      mode = mode || "auto";
+      for (const m of ["auto", "on", "off"]) {
+        document.getElementById("mode-" + m).classList.toggle("active", m === mode);
+      }
+      document.getElementById("fan-mode-hint").textContent = FAN_MODE_HINTS[mode] || "";
+    }
+
+    async function setFanMode(mode) {
+      reflectFanMode(mode);  // optimistic
+      try {
+        const res = await fetch("/api/fan-mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fan_mode: mode })
+        });
+        if (!res.ok) throw new Error();
+        refresh();
+      } catch {
+        document.getElementById("fan-mode-hint").textContent = "Failed to change mode";
       }
     }
 

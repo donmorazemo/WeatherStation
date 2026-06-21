@@ -30,6 +30,13 @@ def current_threshold() -> float:
     return float(os.getenv("TEMP_THRESHOLD_C", "25.5"))
 
 
+def current_fan_mode() -> str:
+    """Return 'auto', 'on', or 'off' from .env. Defaults to 'auto'."""
+    load_dotenv(ENV_PATH, override=True)
+    mode = os.getenv("FAN_MODE", "auto").strip().lower()
+    return mode if mode in ("auto", "on", "off") else "auto"
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -41,8 +48,15 @@ def api_current():
     if not reading:
         return jsonify({"error": "no data"}), 404
     threshold = current_threshold()
+    mode = current_fan_mode()
     reading["threshold_c"] = threshold
-    reading["fan_on"] = reading["temperature_c"] > threshold
+    reading["fan_mode"] = mode
+    if mode == "on":
+        reading["fan_on"] = True
+    elif mode == "off":
+        reading["fan_on"] = False
+    else:
+        reading["fan_on"] = reading["temperature_c"] > threshold
     return jsonify(reading)
 
 
@@ -60,6 +74,21 @@ def api_set_threshold():
         return jsonify({"error": "invalid value"}), 400
     set_key(str(ENV_PATH), "TEMP_THRESHOLD_C", str(value))
     return jsonify({"threshold_c": value})
+
+
+@app.route("/api/fan-mode", methods=["GET"])
+def api_get_fan_mode():
+    return jsonify({"fan_mode": current_fan_mode()})
+
+
+@app.route("/api/fan-mode", methods=["POST"])
+def api_set_fan_mode():
+    data = request.get_json(silent=True) or {}
+    mode = str(data.get("fan_mode", "")).strip().lower()
+    if mode not in ("auto", "on", "off"):
+        return jsonify({"error": "invalid mode"}), 400
+    set_key(str(ENV_PATH), "FAN_MODE", mode)
+    return jsonify({"fan_mode": mode})
 
 
 if __name__ == "__main__":

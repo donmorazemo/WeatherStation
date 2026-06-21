@@ -41,6 +41,13 @@ def get_threshold() -> float:
     return float(os.getenv("TEMP_THRESHOLD_C", "25.5"))
 
 
+def get_fan_mode() -> str:
+    """Return 'auto', 'on', or 'off' from .env (re-read each call). Defaults to 'auto'."""
+    load_dotenv(Path(__file__).parent / ".env", override=True)
+    mode = os.getenv("FAN_MODE", "auto").strip().lower()
+    return mode if mode in ("auto", "on", "off") else "auto"
+
+
 def control_plug(device, turn_on: bool) -> None:
     try:
         if turn_on:
@@ -103,14 +110,26 @@ def main() -> None:
             except Exception:
                 log.exception("Failed to read/store sensor data")
 
-        if plug_device and last_temp is not None:
+        if plug_device:
             try:
-                threshold = get_threshold()
-                should_be_on = last_temp > threshold
-                if should_be_on != last_plug_state:
+                mode = get_fan_mode()
+                if mode == "on":
+                    should_be_on, reason = True, "manual ON"
+                elif mode == "off":
+                    should_be_on, reason = False, "manual OFF"
+                elif last_temp is not None:
+                    threshold = get_threshold()
+                    should_be_on = last_temp > threshold
+                    reason = "auto (%.2f°C %s %.1f°C threshold)" % (
+                        last_temp, ">" if should_be_on else "<=", threshold
+                    )
+                else:
+                    should_be_on, reason = None, "auto (waiting for sensor)"
+
+                if should_be_on is not None and should_be_on != last_plug_state:
                     control_plug(plug_device, should_be_on)
                     last_plug_state = should_be_on
-                    log.info("Plug %s (%.2f°C %s %.1f°C threshold)", "ON" if should_be_on else "OFF", last_temp, ">" if should_be_on else "<=", threshold)
+                    log.info("Plug %s — %s", "ON" if should_be_on else "OFF", reason)
             except Exception:
                 log.exception("Failed to check/control plug")
 
