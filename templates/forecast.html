@@ -153,6 +153,33 @@
     .led-error   { background: #ef4444; box-shadow: 0 0 7px #ef4444; animation: led-pulse 1.4s infinite; }
     .led-unknown { background: #64748b; }
     @keyframes led-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    .status-panel {
+      position: fixed;
+      top: 3.2rem;
+      right: 1rem;
+      max-width: min(90vw, 360px);
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 0.75rem;
+      padding: 0.5rem 0.8rem;
+      font-size: 0.75rem;
+      color: #cbd5e1;
+      z-index: 10;
+      display: none;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+    }
+    .status-panel.show { display: block; }
+    .status-panel ul { list-style: none; margin: 0; padding: 0; }
+    .status-panel li {
+      display: flex;
+      gap: 0.45rem;
+      align-items: flex-start;
+      padding: 0.25rem 0;
+      line-height: 1.35;
+    }
+    .status-panel li + li { border-top: 1px solid #334155; }
+    .status-panel li::before { content: "⚠"; color: #f59e0b; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -160,6 +187,7 @@
     <span class="led-dot led-unknown" id="led-dot"></span>
     <span class="led-text" id="led-text">Checking…</span>
   </div>
+  <div class="status-panel" id="status-panel"><ul id="status-issues"></ul></div>
 
   <div class="wrap">
     <h1>Pressure Forecast</h1>
@@ -376,10 +404,21 @@
       }
     }
 
+    function renderIssues(issues) {
+      const list = document.getElementById("status-issues");
+      list.innerHTML = "";
+      for (const issue of issues) {
+        const li = document.createElement("li");
+        li.textContent = issue;
+        list.appendChild(li);
+      }
+    }
+
     async function refreshHealth() {
       const dot = document.getElementById("led-dot");
       const text = document.getElementById("led-text");
       const wrap = document.getElementById("status-led");
+      const panel = document.getElementById("status-panel");
       try {
         const res = await fetch("/api/health");
         if (!res.ok) throw new Error();
@@ -388,14 +427,20 @@
         if (h.status === "ok") {
           text.textContent = "All systems OK";
           wrap.title = "Sensor writes and Supabase uploads are healthy";
+          renderIssues([]);
+          panel.classList.remove("show");
         } else {
-          text.textContent = h.issues[0] || (h.status === "warn" ? "Warning" : "System error");
+          text.textContent = h.issues.length === 1 ? "1 issue" : h.issues.length + " issues";
           wrap.title = h.issues.join("\n");
+          renderIssues(h.issues);
+          panel.classList.add("show");
         }
       } catch {
         dot.className = "led-dot led-unknown";
         text.textContent = "Status unavailable";
         wrap.title = "Could not reach the status endpoint";
+        renderIssues(["Could not reach the status endpoint"]);
+        panel.classList.add("show");
       }
     }
 
