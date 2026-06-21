@@ -8,6 +8,8 @@ from pathlib import Path
 from dotenv import load_dotenv, set_key
 from flask import Flask, jsonify, render_template, request
 
+import health
+
 ENV_PATH = Path(__file__).parent / ".env"
 DB_PATH = Path(__file__).parent / "weather.db"
 
@@ -58,6 +60,11 @@ def api_current():
     else:
         reading["fan_on"] = reading["temperature_c"] > threshold
     return jsonify(reading)
+
+
+@app.route("/api/health")
+def api_health():
+    return jsonify(health.check_health(DB_PATH))
 
 
 @app.route("/api/threshold", methods=["GET"])

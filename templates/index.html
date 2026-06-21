@@ -218,9 +218,45 @@
       margin-top: 1rem;
       display: none;
     }
+
+    .status-led {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      max-width: 60vw;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 999px;
+      padding: 0.35rem 0.8rem 0.35rem 0.7rem;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      z-index: 10;
+    }
+    .led-dot {
+      width: 0.7rem;
+      height: 0.7rem;
+      border-radius: 50%;
+      background: #64748b;
+      flex-shrink: 0;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .led-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .led-ok      { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+    .led-warn    { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+    .led-error   { background: #ef4444; box-shadow: 0 0 7px #ef4444; animation: led-pulse 1.4s infinite; }
+    .led-unknown { background: #64748b; }
+    @keyframes led-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
   </style>
 </head>
 <body>
+  <div class="status-led" id="status-led" title="Checking system status…">
+    <span class="led-dot led-unknown" id="led-dot"></span>
+    <span class="led-text" id="led-text">Checking…</span>
+  </div>
+
   <h1>Weather Station</h1>
 
   <div class="cards">
@@ -354,8 +390,33 @@
       }
     }
 
+    async function refreshHealth() {
+      const dot = document.getElementById("led-dot");
+      const text = document.getElementById("led-text");
+      const wrap = document.getElementById("status-led");
+      try {
+        const res = await fetch("/api/health");
+        if (!res.ok) throw new Error();
+        const h = await res.json();
+        dot.className = "led-dot led-" + h.status;
+        if (h.status === "ok") {
+          text.textContent = "All systems OK";
+          wrap.title = "Sensor writes and Supabase uploads are healthy";
+        } else {
+          text.textContent = h.issues[0] || (h.status === "warn" ? "Warning" : "System error");
+          wrap.title = h.issues.join("\n");
+        }
+      } catch {
+        dot.className = "led-dot led-unknown";
+        text.textContent = "Status unavailable";
+        wrap.title = "Could not reach the status endpoint";
+      }
+    }
+
     refresh();
     setInterval(refresh, 5000);
+    refreshHealth();
+    setInterval(refreshHealth, 20000);
   </script>
 </body>
 </html>

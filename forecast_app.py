@@ -13,6 +13,7 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request
 
 import forecast as fc
+import health
 
 DB_PATH = Path(__file__).parent / "weather.db"
 
@@ -62,6 +63,11 @@ def index():
         bucket_minutes=fc.BUCKET_MINUTES,
         horizon_hours=fc.FORECAST_HORIZON_HOURS,
     )
+
+
+@app.route("/api/health")
+def api_health():
+    return jsonify(health.check_health(DB_PATH))
 
 
 @app.route("/api/series")
