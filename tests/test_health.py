@@ -99,3 +99,63 @@ def test_check_health_unreadable_db_is_error():
     h = health.check_health("/nonexistent/path/weather.db", now=NOW)
     assert h["status"] == "error"
     assert "database" in h["checks"]
+
+
+# --- sensor plausibility --------------------------------------------------
+
+def _recent(n, identical=True):
+    """n readings oldest-first, 60s apart, ending ~1 min ago."""
+    out = []
+    for i in range(n):
+        age = (n - i) * 60  # oldest first
+        temp = 22.5 if identical else 22.5 + 0.01 * i
+        pressure = 1011.0 if identical else 1011.0 + 0.02 * i
+        out.append((_ago(age), temp, pressure))
+    return out
+
+
+def _base(recent):
+    return {"newest_ts": _ago(30), "unpushed_count": 0, "oldest_unpushed_ts": None, "recent": recent}
+
+
+def test_jittering_sensor_ok():
+    h = health.evaluate(_base(_recent(20, identical=False)), now=NOW)
+    assert h["checks"]["sensor"]["status"] == "ok"
+    assert h["status"] == "ok"
+
+
+def test_frozen_sensor_error():
+    # 20 identical readings spanning ~20 min while the collector keeps writing.
+    h = health.evaluate(_base(_recent(20, identical=True)), now=NOW)
+    assert h["checks"]["sensor"]["status"] == "error"
+    assert h["checks"]["local_writes"]["status"] == "ok"  # writes look fine...
+    assert h["status"] == "error"                         # ...but sensor is frozen
+    assert any("frozen" in i.lower() for i in h["issues"])
+
+
+def test_few_identical_samples_not_frozen():
+    # Only 5 identical reads — not enough to call it stuck.
+    h = health.evaluate(_base(_recent(5, identical=True)), now=NOW)
+    assert h["checks"]["sensor"]["status"] == "ok"
+
+
+def test_implausible_temp_jump_warn():
+    recent = [(_ago(120), 22.0, 1011.0), (_ago(60), 35.0, 1011.1)]  # 60s apart, +13°C
+    h = health.evaluate(_base(recent), now=NOW)
+    assert h["checks"]["sensor"]["status"] == "warn"
+    assert any("jump" in i.lower() for i in h["issues"])
+
+
+def test_jump_across_long_gap_ignored():
+    # Same big delta but 10 min apart (e.g. collector resumed) — not a glitch.
+    recent = [(_ago(660), 22.0, 1011.0), (_ago(60), 35.0, 1011.0)]
+    h = health.evaluate(_base(recent), now=NOW)
+    assert h["checks"]["sensor"]["status"] == "ok"
+
+
+def test_no_recent_data_sensor_ok():
+    # Sensor check stays neutral when there's nothing recent (stale writes
+    # are reported by the local_writes check instead).
+    h = health.evaluate({"newest_ts": _ago(30), "unpushed_count": 0,
+                         "oldest_unpushed_ts": None, "recent": []}, now=NOW)
+    assert h["checks"]["sensor"]["status"] == "ok"
