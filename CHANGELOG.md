@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2026-06-20]
+
+### Added — Manual Fan Control
+- The `:5000` dashboard now has a three-way **Auto / On / Off** fan control. Mode is stored in `.env` as `FAN_MODE` and re-read by the collector every 5 s — no restart needed.
+- `On`/`Off` force the plug regardless of temperature and work even when the sensor is offline; `Auto` keeps the existing temperature-vs-threshold logic.
+- New endpoints `GET`/`POST /api/fan-mode`; `/api/current` now also returns `fan_mode`.
+
+### Added — System Health Status LED
+- New shared `health.py` (read-only, pure-logic + `check_health(db_path)`) infers pipeline health from `weather.db` alone, served at `GET /api/health` on both `:5000` and `:5001`.
+- Both dashboards render a green/amber/red status LED (top-right) showing the **worst** of four checks, with a panel listing every active issue (visible on touch screens, not just on hover):
+  - **Local writes** — newest reading stale (collector/sensor down).
+  - **Uploads** — oldest unpushed row aging (pusher/Supabase failing).
+  - **Sensor frozen** — identical temperature *and* pressure across ≥10 samples over ≥15 min while still writing (a stuck sensor the write check alone misses).
+  - **Sensor glitch** — physically impossible jump (≥8 °C or ≥12 hPa) between near-adjacent readings.
+  - **Database** — unreadable/locked/missing DB.
+- Tests: new `tests/test_health.py` (15 cases; 46 total).
+
+### Changed — Dashboard Layout
+- Pressure moved from a prominent card to a small muted line; temperature is now the single headline reading on the fan-control page.
+
+### Changed — Pusher Backlog Drain
+- The pusher now drains the **entire** unpushed backlog in one cycle (looping 500-row batches until empty) instead of one batch per 5-minute interval. A large backlog after a Supabase pause now clears in a single pass. Replay-on-reconnect semantics unchanged.
+
+---
+
 ## [2026-06-13b]
 
 ### Added — 6 h Confirm Trend + 7-Day Anomaly

@@ -126,9 +126,12 @@ PLUG_DEVICE_ID=xxxxxxxxxxxxxxxxxx
 PLUG_LOCAL_IP=192.168.1.x
 PLUG_LOCAL_KEY=xxxxxxxxxxxxxxxx
 TEMP_THRESHOLD_C=25.5
+FAN_MODE=auto
 ```
 
 Adjust `TEMP_THRESHOLD_C` to your preferred threshold in °C (25.5°C = 78°F).
+`FAN_MODE` is `auto` (follow the threshold), `on` (force the fan on), or `off`
+(force it off); it defaults to `auto` and is normally set from the dashboard, not by hand.
 
 ---
 
@@ -421,9 +424,11 @@ hostname -I
 ```
 
 The dashboard:
-- Shows temperature (°F) and pressure — **auto-refreshes every 5 seconds**
+- Shows temperature (°F) prominently, with pressure as a small line — **auto-refreshes every 5 seconds**
 - Shows whether the fan/plug is ON or OFF
 - Lets you update the fan threshold in °F — **takes effect within 5 seconds**
+- Has a three-way **Auto / On / Off** fan control (Auto follows the threshold; On/Off force the plug)
+- Shows a **system-health LED** (top-right) that turns amber/red and lists the problem if sensor writes stall, a reading freezes, or uploads to Supabase start failing. The same indicator appears on the forecast page (`:5001`).
 
 ### 11.3 Update the fan threshold from the command line
 

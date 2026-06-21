@@ -49,12 +49,45 @@ This installs dependencies, enables I2C, initialises the local SQLite database, 
 
 | Service | What it does | Interval |
 |---------|-------------|----------|
-| `collector.py` | Reads BMP280 → SQLite | Every 60 s |
+| `collector.py` | Reads BMP280 → SQLite; drives the fan plug | Every 60 s (plug check every 5 s) |
 | `pusher.py` | SQLite → Supabase (unpushed rows) | Every 5 min |
-| `webapp.py` | Live dashboard on `:5000` (temp + fan threshold) | — |
+| `webapp.py` | Live dashboard on `:5000` (temp + fan control + health) | — |
 | `forecast_app.py` | Pressure forecast dashboard on `:5001` | Refresh every 60 s |
 
-All services restart automatically on failure. Unpushed rows replay on reconnect.
+All services restart automatically on failure. Unpushed rows replay on reconnect,
+and the pusher drains the **entire** backlog in one cycle once connectivity returns
+(e.g. after a Supabase pause), instead of one 500-row batch per interval.
+
+## Fan Control
+
+The collector switches a Feit/Tuya smart plug (a fan) based on temperature. The
+`:5000` dashboard exposes a three-way control written to `FAN_MODE` in `.env`:
+
+| Mode | Behaviour |
+|------|-----------|
+| **Auto** | Plug follows temperature vs. the threshold (`TEMP_THRESHOLD_C`) |
+| **On** | Plug forced on, regardless of temperature |
+| **Off** | Plug forced off, regardless of temperature |
+
+The collector re-reads `FAN_MODE` every 5 s (no restart needed). Manual On/Off work
+even if the sensor is offline. Endpoints: `GET`/`POST /api/fan-mode`, `GET`/`POST /api/threshold`.
+
+## System Health
+
+Both dashboards show a status LED (top-right) backed by `health.py`, a read-only
+module that infers the health of the whole pipeline from `weather.db` alone. It is
+served at `GET /api/health` on both `:5000` and `:5001`. The LED is green / amber /
+red for the **worst** of four checks, and a panel lists every active issue:
+
+| Check | Flags | Detects |
+|-------|-------|---------|
+| Local writes | newest row > 3 min (amber) / > 10 min (red) | collector crashed or sensor off the I2C bus |
+| Uploads | oldest unpushed row > 15 min (amber) / > 1 h (red) | pusher / Supabase uploads failing |
+| Sensor frozen | identical temp **and** pressure ≥ 10 samples over ≥ 15 min (red) | a stuck sensor that is *still writing* (the write check alone misses this) |
+| Sensor glitch | ≥ 8 °C or ≥ 12 hPa jump between readings < 3 min apart (amber) | an implausible single-reading spike |
+| Database | unreadable / locked / missing (red) | local DB problem |
+
+Thresholds are constants at the top of `health.py`. Covered by `tests/test_health.py`.
 
 ## Pressure Forecast (`forecast_app.py`)
 
