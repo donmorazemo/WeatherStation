@@ -79,9 +79,14 @@ def main() -> None:
 
     while True:
         try:
-            pushed = sync_once(conn, endpoint, headers)
-            if pushed:
-                log.info("Pushed %d row(s) to Supabase", pushed)
+            total = 0
+            while True:
+                pushed = sync_once(conn, endpoint, headers)
+                if not pushed:
+                    break
+                total += pushed
+            if total:
+                log.info("Pushed %d row(s) to Supabase", total)
         except Exception:
             log.exception("Sync failed — will retry next interval")
         time.sleep(INTERVAL_SECONDS)
